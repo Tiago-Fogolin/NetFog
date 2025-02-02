@@ -8,8 +8,16 @@ class NetFileWriter(FileWriterTemplate):
             node_count = len(nodes)
 
             file.write(f"*vertices {node_count}\n")
-            for index, node in nodes.items():
-                file.write(f'{index} "{node}"\n')
+            for label, values in nodes.items():
+                index = values['index']
+                x = values['x']
+                y = values['y']
+                if not x and not y:
+                    text = f'{index} "{label}"\n'
+                else:
+                    text = f'{index} "{label}" {x} {y}\n'
+
+                file.write(text)
 
             if edges:
                 file.write(f"*edges\n")

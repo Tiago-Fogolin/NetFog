@@ -17,7 +17,6 @@ class NetFileReader(FileReaderTemplate):
 
             for line in file.readlines():
                 line = line.replace("\n", "")
-                # line = line.replace('"', "")
 
                 if line == '':
                     continue

@@ -1,7 +1,7 @@
 from graph.node import Node
 from template.html_writer import HtmlWriter
 from template.svg_writer import SVGWriter
-from layouts.layouts import RandomLayout
+from layouts.layouts import RandomLayout, normalize_positions
 from file_reader.file_reader import NetFileReader
 from file_writer.file_writer import NetFileWriter
 
@@ -14,6 +14,17 @@ def create_node_dict(nodes, start_index=0):
     node_dict = dict(
         [(i, str(node)) for i, node in enumerate(nodes, start_index)]
     )
+
+    return node_dict
+
+def create_positions_node_dicts(nodes, start_index=0, positions=None):
+    node_dict = {}
+
+    for index, node in enumerate(nodes, start_index):
+        x = positions[node.label]['x']
+        y = positions[node.label]['y']
+        node_dict[node.label] = {'index': index, 'x': x, 'y': y}
+        
 
     return node_dict
 
@@ -142,6 +153,8 @@ class Graph:
 
         return new_Graph
 
+    def _get_dict():
+        ...
 
     def from_net_file(file_path: str):
         file_reader = NetFileReader()
@@ -178,9 +191,13 @@ class Graph:
 
         html_writer.output(file_name)
 
-    def output_net_file(self, path):
+    def output_net_file(self, path, layout=RandomLayout):
         net_file_writer = NetFileWriter()
+
+        positions = self.normalized_positions if self.normalized_positions else normalize_positions(layout().generate_positions(self.nodes))
+
+        node_dict_positions = create_positions_node_dicts(self.nodes, 1, positions)
         
         edges, arcs = create_node_tuple_list(self.nodes, self.get_connections())
 
-        net_file_writer.write_file(path, create_node_dict(self.nodes, start_index=1), edges, arcs)
+        net_file_writer.write_file(path, node_dict_positions, edges, arcs)
