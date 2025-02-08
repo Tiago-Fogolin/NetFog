@@ -2,8 +2,8 @@ from graph.node import Node
 from template.html_writer import HtmlWriter
 from template.svg_writer import SVGWriter
 from layouts.layouts import RandomLayout, normalize_positions
-from file_reader.file_reader import NetFileReader
-from file_writer.file_writer import NetFileWriter
+from file_reader.file_reader import FileReaderTemplate, NetFileReader, JsonFileReader
+from file_writer.file_writer import NetFileWriter, JsonFileWriter
 
 def create_nodes_from_labels(size, labels):
         str_list = labels if labels else list(map(str, range(size)))
@@ -31,7 +31,7 @@ def create_positions_node_dicts(nodes, start_index=0, positions=None):
 def invert_node_dict(node_dict):
     return dict( (node_label, i) for i, node_label in node_dict.items() )
 
-def create_node_tuple_list(nodes, connections):
+def create_node_tuple_list(nodes, connections, work_with_labels=False):
     node_dict = invert_node_dict(create_node_dict(nodes, start_index=1))
     edges_tuple_list = []
     arcs_tuple_list = []
@@ -40,6 +40,11 @@ def create_node_tuple_list(nodes, connections):
         from_node = node_dict[conn['from']]
         to_node = node_dict[conn['to']]
         weight = conn['weight']
+
+        if work_with_labels:
+            from_node = conn['from']
+            to_node = conn['to']
+            weight = conn['weight']
         
         if conn['directed']:
             arcs_tuple_list.append((from_node, to_node, weight))
@@ -152,16 +157,23 @@ class Graph:
             new_Graph.create_connection(_from, _to, _weight, directed=True)
 
         return new_Graph
+    
+    def _from_file_reader(file_path: str, file_reader: FileReaderTemplate):
+        reader = file_reader()
+
+        graph = Graph._from_dict(reader.read_file(file_path))
+
+        return graph
 
     def _get_dict():
         ...
 
     def from_net_file(file_path: str):
-        file_reader = NetFileReader()
+        return Graph._from_file_reader(file_path, NetFileReader)
+    
+    def from_json_file(file_path: str):
+        return Graph._from_file_reader(file_path, JsonFileReader)
 
-        new_graph = Graph._from_dict(file_reader.read_file(file_path))
-
-        return new_graph
 
     def generate_adjacency_matrix(self):
         matrix_size = len(self.nodes)
@@ -172,7 +184,7 @@ class Graph:
         for conn in connections:
             i = node_dict[conn['from']]
             j = node_dict[conn['to']]
-            adj_matrix[i][j] = conn['weight']
+            adj_matrix[i][j] = int(conn['weight'])
 
         return adj_matrix
     
@@ -201,3 +213,10 @@ class Graph:
         edges, arcs = create_node_tuple_list(self.nodes, self.get_connections())
 
         net_file_writer.write_file(path, node_dict_positions, edges, arcs)
+
+    def output_json_file(self, path):
+        json_file_writer = JsonFileWriter()
+
+        edges, arcs = create_node_tuple_list(self.nodes, self.get_connections(), work_with_labels=True)
+
+        json_file_writer.write_file(path, self.nodes, edges, arcs)

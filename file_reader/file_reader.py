@@ -1,3 +1,5 @@
+import json
+
 class FileReaderTemplate:
     def read_file(self, path_to_file: str): raise NotImplementedError()
 
@@ -88,3 +90,44 @@ class NetFileReader(FileReaderTemplate):
 
         return graph_dict
                     
+
+class JsonFileReader(FileReaderTemplate):
+
+    def read_file(self, path_to_file):
+        graph_dict = {
+            'nodes': [],
+            'edges': [],
+            'arcs': []
+        }
+
+        with open(path_to_file, 'r', encoding='utf8') as file:
+            file_data = json.load(file)
+
+        for node in file_data["nodes"]:
+            _node = {
+                'node': node['label'],
+                'x': None,
+                'y': None
+            }
+
+            graph_dict['nodes'].append(_node)
+
+        for edge in file_data["edges"]:
+            conn = {
+                "from": edge["source"],
+                "to": edge["target"],
+                "weight": edge["weigth"]
+            }
+
+            graph_dict['edges'].append(conn)
+
+        for edge in file_data["arcs"]:
+            conn = {
+                "from": edge["source"],
+                "to": edge["target"],
+                "weight": edge["weigth"]
+            }
+
+            graph_dict['arcs'].append(conn)
+
+        return graph_dict

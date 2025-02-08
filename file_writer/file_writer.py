@@ -1,3 +1,5 @@
+import json
+
 class FileWriterTemplate:
     def write_file(self, path: str): raise NotImplementedError()
 
@@ -28,5 +30,49 @@ class NetFileWriter(FileWriterTemplate):
                 file.write(f"*arcs\n")
                 for from_, to_, weight_ in arcs:
                     file.write(f"{from_} {to_} {weight_}\n")
+
+class JsonFileWriter(FileWriterTemplate):
+    
+    def write_file(self, path: str, nodes, edges, arcs):
+        final_dict = {
+            'nodes': []
+        }
+
+        for node in nodes:
+            
+            node_obj = {
+                'label': node.label
+            }
+
+            final_dict['nodes'].append(node_obj)
+
+        for from_, to_, weight_ in edges:
+            if not final_dict.get('edges', None):
+                final_dict['edges'] = []
+            
+            edge_obj = {
+                "source": from_,
+                "target": to_,
+                "weight": weight_
+            }
+
+            final_dict['edges'].append(edge_obj)
+
+        for from_, to_, weight_ in arcs:
+            if not final_dict.get('arcs', None):
+                final_dict['arcs'] = []
+            
+            edge_obj = {
+                "source": from_,
+                "target": to_,
+                "weight": weight_
+            }
+
+            final_dict['arcs'].append(edge_obj)
+
+
+        with open(path, 'w', encoding='utf-8') as file:
+           json.dump(final_dict, file, indent=4)
+
 
 
