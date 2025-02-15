@@ -4,7 +4,7 @@ var isPanning = false;
 var previousX, previousY;
 var svg = document.querySelector("svg");
 
-var viewBox = { x: 0, y: 0, width: 1500, height: 700 };
+var viewBox = { x: 0, y: 0, width: 300, height: 100 };
 svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
 
 
@@ -140,6 +140,11 @@ function onWheel(event) {
 
     // Atualizar o viewBox do SVG
     svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
+}
+
+function toggleMenu() {
+    const menu = document.getElementById("sideMenu");
+    menu.classList.toggle("open");
 }
 
 document.addEventListener('mousemove', onMouseMove);

@@ -11,7 +11,7 @@ matriz_adjacencia = [
     [0, 0, 1, 0, 1, 0]
 ]
 
-grafo = Graph.from_json_file('jsonexemplo.json')
+grafo = Graph.from_net_file('net.net')
 
-grafo.output_json_file('jsonoutput.json')
+grafo.output_html('teste.html')
 
