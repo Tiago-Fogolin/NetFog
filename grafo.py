@@ -11,7 +11,7 @@ matriz_adjacencia = [
     [0, 0, 1, 0, 1, 0]
 ]
 
-grafo = Graph.from_net_file('net.net')
+grafo = Graph.from_net_file('data (2).net')
 
-grafo.output_html('teste.html')
+grafo.output_html('teste2.html')
 

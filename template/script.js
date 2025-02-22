@@ -4,7 +4,7 @@ var isPanning = false;
 var previousX, previousY;
 var svg = document.querySelector("svg");
 
-var viewBox = { x: 0, y: 0, width: 300, height: 100 };
+var viewBox = { x: 0, y: 0, width: 1500, height: 700 };
 svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
 
 
@@ -146,6 +146,160 @@ function toggleMenu() {
     const menu = document.getElementById("sideMenu");
     menu.classList.toggle("open");
 }
+
+function parseSVG() {
+    const svg = document.querySelector("svg");
+    if (!svg) {
+        console.error("Nenhum SVG encontrado.");
+        return;
+    }
+
+    const nodes = [];
+    const edges = [];
+    const arcs = [];
+    const labels = {};
+
+    
+    svg.querySelectorAll("text").forEach(label => {
+        const className = label.getAttribute("class") || "";
+        const match = className.match(/label(\d+)/);
+        if (match) {
+            labels[match[1]] = label.textContent.trim();
+        }
+    });
+
+    svg.querySelectorAll("circle").forEach(circle => {
+        const className = circle.getAttribute("class") || "";
+        const match = className.match(/node(\d+)/);
+        if (match) {
+            const index = match[1];
+            nodes.push({
+                x: parseFloat(circle.getAttribute("cx")),
+                y: parseFloat(circle.getAttribute("cy")),
+                radius: parseFloat(circle.getAttribute("r")),
+                className,
+                label: labels[index] || "",
+                index: index
+            });
+        }
+    });
+
+   
+    svg.querySelectorAll("line").forEach(line => {
+        const className = line.getAttribute("class") || "";
+        const match = className.match(/(\d+)line(\d+)/); 
+        if (match) {
+            const sourceIndex = match[1];
+            const targetIndex = match[2];
+
+            const connection = {
+                x1: parseFloat(line.getAttribute("x1")),
+                y1: parseFloat(line.getAttribute("y1")),
+                x2: parseFloat(line.getAttribute("x2")),
+                y2: parseFloat(line.getAttribute("y2")),
+                className,
+                source: sourceIndex,
+                target: targetIndex
+            };
+
+            if (line.hasAttribute("marker-end") && line.getAttribute("marker-end") !== "") {
+                arcs.push(connection);
+            } else {
+                edges.push(connection);
+            }
+        }
+    });
+
+    return { nodes, edges, arcs , labels };
+}
+
+function writePajek() {
+    var {nodes, edges, arcs, labels} = parseSVG();
+    const [initialWidth, initialHeight] = [1500,700];
+    
+    let content = `*Vertices ${Object.keys(nodes).length}\n`;
+    
+    for (const [idx, values] of Object.entries(nodes)) {
+        const index = values.index;
+        const x = values.x;
+        const y = values.y;
+        const label = values.label;
+
+        const normX = (x / initialWidth).toFixed(4);
+        const normY = (y / initialHeight).toFixed(4);
+        
+        content += `${index} \"${label}\" ${normX} ${normY}\n`;
+    }
+    
+    if (Array.isArray(edges) && edges.length > 0) {
+        content += `*Edges\n`;
+        for (const edge of edges) {
+            const { source, target} = edge;  
+            content += `${source} ${target} 1\n`;
+        }
+    }
+    
+    if (Array.isArray(arcs) && arcs.length > 0) {
+        content += `*Arcs\n`;
+        for (const arc of arcs) {
+            const { source, target} = arc; 
+            content += `${source} ${target} 1\n`;
+        }
+    }
+    
+    const blob = new Blob([content], { type: "text/plain" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "data.net";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function writeJson() {
+    var {nodes, edges, arcs} = parseSVG();
+    var final_dict = {
+        'nodes': [],
+        'edges': [],
+        'arcs': []
+    };
+
+    nodes.forEach((e) => {
+        let obj = {
+            'label': e.label
+        };
+        final_dict['nodes'].push(obj);
+    });
+        
+
+    edges.forEach((e) => {
+        let edge_obj = {
+            "source": e.source,
+            "target": e.target
+        };
+        final_dict['edges'].push(edge_obj);
+    });
+
+    arcs.forEach((e) => {
+        let arc_obj = {
+            "source": e.source,
+            "target": e.target
+        };
+        final_dict['arcs'].push(arc_obj);
+    });
+
+    var conteudoJson = JSON.stringify(final_dict);
+    var blob = new Blob([conteudoJson], { type: "application/json" });
+
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "data.json";
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
 
 document.addEventListener('mousemove', onMouseMove);
 document.addEventListener('mousedown', onMouseDown);
