@@ -4,6 +4,7 @@ from template.svg_writer import SVGWriter
 from layouts.layouts import RandomLayout, normalize_positions
 from file_reader.file_reader import FileReaderTemplate, NetFileReader, JsonFileReader
 from file_writer.file_writer import NetFileWriter, JsonFileWriter
+from style.graph_style import GraphStyle
 
 def create_nodes_from_labels(size, labels):
         str_list = labels if labels else list(map(str, range(size)))
@@ -194,8 +195,8 @@ class Graph:
     def get_mean_weight(self):
         return self.get_total_weight()/len(self.get_connections())
     
-    def output_html(self, file_name, layout=RandomLayout, override_positions=False):
-        svg_writer = SVGWriter()
+    def output_html(self, file_name, layout=RandomLayout, style=GraphStyle(), override_positions=False):
+        svg_writer = SVGWriter(graph_style=style)
 
         svg_writer.draw_graph(self.nodes, self.get_connections(), layout, self.normalized_positions, override_positions)
 

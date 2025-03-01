@@ -1,23 +1,22 @@
 import svg
 from layouts import layouts
+from style.graph_style import GraphStyle
 
 class SVGWriter:
 
-    def __init__(self) -> None:
+    def __init__(self, graph_style) -> None:
         self.elements = []
+        self.markers = []
         self.centers  = {}
-        self.set_default_settings()
-
-    def set_default_settings(self):
-        self.node_color = 'blue'
+        self.graph_style = graph_style
 
     def add_node(self, x, y, label, node_index):
         self.elements.append(
             svg.Circle(
                 cx=x,
                 cy=y,
-                stroke=self.node_color,
-                fill=self.node_color,
+                stroke=self.graph_style.node_style.border_color,
+                fill=self.graph_style.node_style.fill_color,
                 r=20,
                 class_=f'node{node_index}'
             )
@@ -35,8 +34,21 @@ class SVGWriter:
             )
         )
 
-    def add_line(self, x1, y1, x2, y2, from_index, to_index, directed=False):
-        marker_end = 'url(#arrow)'  if directed else ''
+    def add_line(
+            self, 
+            x1, 
+            y1, 
+            x2, 
+            y2, 
+            from_index, 
+            to_index, 
+            directed,
+            weight,
+            max_weight
+        ):
+        
+        stroke_width = self.graph_style.get_line_width(weight, 1, max_weight)
+        class_ = f'{from_index}line{to_index}'
 
         self.elements.append(
             svg.Line(
@@ -44,22 +56,41 @@ class SVGWriter:
                 y1=y1,
                 x2=x2,
                 y2=y2,
-                stroke='black',
-                class_=f'{from_index}line{to_index}',
-                marker_end=marker_end
+                stroke=self.graph_style.line_style.color,
+                class_=class_,
+                stroke_width=stroke_width
+            )
+        )
+
+        if directed:
+            self.add_marker_only_line(x1, y1, x2, y2, stroke_width, class_)
+
+
+    def add_marker_only_line(self, x1, y1, x2, y2, stroke_width, class_):
+        
+        self.markers.append(
+            svg.Line(
+                x1=x1,
+                y1=y1,
+                x2=x2,
+                y2=y2,
+                stroke="none", 
+                marker_end='url(#marker)',
+                stroke_width=stroke_width,
+                class_ = class_
             )
         )
 
     def add_arrow_ref(self):
         arrow_head = svg.Path(
-            d='M0,0 L0,6 L9,3 z',
-            fill='black'
+            d=self.graph_style.marker_style.svg,
+            fill=self.graph_style.marker_style.svg_fill
         )
 
         arrow_marker = svg.Marker(
-            id='arrow',
-            markerWidth='30',
-            markerHeight='30',
+            id='marker',
+            markerWidth=self.graph_style.marker_style.width,
+            markerHeight=self.graph_style.marker_style.height,
             refX='29',
             refY='3',
             orient='auto',
@@ -97,6 +128,8 @@ class SVGWriter:
             )
 
     def draw_lines(self, connections):
+        max_weight = max(map(lambda x: int(x['weight']), connections))
+
         for conn in connections:
             from_node = conn['from']
             to_node = conn['to']
@@ -107,8 +140,13 @@ class SVGWriter:
                 y2=self.centers[to_node]['y'],
                 from_index=self.centers[from_node]['index'],
                 to_index=self.centers[to_node]['index'],
-                directed=conn['directed']
+                directed=conn['directed'],
+                weight=conn['weight'],
+                max_weight=max_weight
             )
+
+        if self.markers:
+            self.elements.append(self.markers)
 
     def get_svg(self):
         return svg.SVG(

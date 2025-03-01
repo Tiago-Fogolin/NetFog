@@ -8,7 +8,6 @@ var viewBox = { x: 0, y: 0, width: 1500, height: 700 };
 svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
 
 
-
 function moveCircle(dx, dy) {
     let nodeIndex = getNodeIndex();
     let label = getLabel(nodeIndex);
@@ -149,10 +148,6 @@ function toggleMenu() {
 
 function parseSVG() {
     const svg = document.querySelector("svg");
-    if (!svg) {
-        console.error("Nenhum SVG encontrado.");
-        return;
-    }
 
     const nodes = [];
     const edges = [];
