@@ -10,7 +10,7 @@ class GraphStyle:
         self.marker_style = marker_style
 
     def get_line_width(self, weight, min_weight, max_weight):
-        return self.line_style.get_width(weight, min_weight, max_weight)
+        return self.line_style.get_width(int(weight), int(min_weight), max_weight)
         
     def set_line_width(self, min_width, max_width):
         self.line_style.min_width = min_width

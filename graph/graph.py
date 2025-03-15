@@ -195,6 +195,95 @@ class Graph:
     def get_mean_weight(self):
         return self.get_total_weight()/len(self.get_connections())
     
+    def get_node_count(self):
+        return len(self.nodes)
+
+    def get_edge_count(self):
+        return len(self.get_connections())
+    
+    def get_density(self, directed=False):
+        edge_count = self.get_edge_count()
+        node_count = self.get_node_count()
+        multiply = 2 if directed else 1
+
+        density = (multiply * edge_count) / (node_count * (node_count - 1))
+
+        return density
+
+    def compute_degrees(self, node_label: str):
+        """
+            Returns the in_degree (only for arcs), 
+                        out_degree (only for arcs),
+                        total_degree (sum of in_degree and out_degree),
+                        undirected_degree (number of edges connected to the node)
+        """
+        connections = self.get_connections()
+
+        degrees = {
+            "in_degree": 0,
+            "out_degree": 0,
+            "total_degree": 0,
+            "undirected_degree": 0
+        }
+
+        for conn in connections:
+            directed = conn['directed']
+
+            if directed:
+                if conn['from'] == node_label:
+                    degrees['out_degree'] += 1
+                    degrees['total_degree'] += 1
+
+                if conn['to'] == node_label:
+                    degrees['in_degree'] += 1
+                    degrees['total_degree'] += 1
+                    
+                continue
+
+            if conn['to'] == node_label or conn['from'] == node_label:
+                degrees['undirected_degree'] += 1
+
+        return degrees
+
+    def get_mean_degree(self, directed=False):
+        multiply = 1 if directed else 2
+
+        edge_count = self.get_edge_count()
+        node_count = self.get_node_count()
+
+        mean = (multiply * edge_count) / (node_count)
+
+        return mean
+
+    def get_centrality_degree(self, node_label: str):
+        """
+            Returns the out_centrality (only for arcs),
+                        in_centrality (only for arcs),
+                        total_centrality (only for arcs),
+                        undirected_centrality (only for edges)
+        """
+        centralities = {
+            "out_centrality" : 0,
+            "in_centrality" : 0,
+            "total_centrality" : 0,
+            "undirected_centrality" : 0,
+        }
+
+        degrees = self.compute_degrees(node_label)
+        node_count = self.get_node_count()
+        
+        if node_count <= 1:
+            return centralities
+        
+        
+        centralities['out_centrality'] = degrees["out_degree"] / (node_count - 1)
+        centralities['in_centrality'] = degrees["in_degree"] / (node_count - 1)
+        centralities['total_centrality'] = degrees["total_degree"] / (node_count - 1)
+        centralities['undirected_centrality'] = degrees["undirected_degree"] / (node_count - 1)
+
+        return centralities
+
+
     def output_html(self, file_name, layout=RandomLayout, style=GraphStyle(), override_positions=False):
         svg_writer = SVGWriter(graph_style=style)
 
