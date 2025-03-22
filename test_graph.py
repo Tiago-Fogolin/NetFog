@@ -176,12 +176,12 @@ class GraphTest(TestCase):
         self.assertEqual(degrees_node4['undirected_degree'], 1)
         self.assertEqual(degrees_node4['total_degree'], 1)
 
-    def test_get_mean_degree(self):
+    def test_get_average_degree(self):
         expected_mean_degree = (2 * 5) / 4
-        self.assertEqual(self.grafo.get_mean_degree(directed=False), expected_mean_degree)
+        self.assertEqual(self.grafo.get_average_degree(directed=False), expected_mean_degree)
 
         expected_mean_degree_directed = (1 * 5) / 4
-        self.assertEqual(self.grafo.get_mean_degree(directed=True), expected_mean_degree_directed)
+        self.assertEqual(self.grafo.get_average_degree(directed=True), expected_mean_degree_directed)
 
     def test_get_mean_weight(self):
         expected_mean_weight = (2 + 4 + 5.5 + 1.2 + 1.6) / 5
@@ -212,7 +212,20 @@ class GraphTest(TestCase):
         self.assertAlmostEqual(centralities['total_centrality'], 1 / 3)
         self.assertAlmostEqual(centralities['undirected_centrality'], 1 / 3)
 
-        
+    def test_degree_distribution(self):
+        self.grafo.get_degree_distribution()
+        distribution = self.grafo.get_degree_distribution()
+
+        expected_distribution = {
+            'in_distribution': {0: 0.5, 1: 0.5},
+            'out_distribution': {2: 0.25, 0: 0.75},
+            'undirected_distribution': {2: 0.5, 1: 0.5}
+        }
+
+        self.assertEqual(distribution['in_distribution'], expected_distribution['in_distribution'])
+        self.assertEqual(distribution['out_distribution'], expected_distribution['out_distribution'])
+        self.assertEqual(distribution['undirected_distribution'], expected_distribution['undirected_distribution'])
+    
        
 
 

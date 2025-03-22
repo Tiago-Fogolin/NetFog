@@ -245,7 +245,7 @@ class Graph:
 
         return degrees
 
-    def get_mean_degree(self, directed=False):
+    def get_average_degree(self, directed=False):
         multiply = 1 if directed else 2
 
         edge_count = self.get_edge_count()
@@ -282,6 +282,40 @@ class Graph:
         centralities['undirected_centrality'] = degrees["undirected_degree"] / (node_count - 1)
 
         return centralities
+    
+    def get_degree_distribution(self):
+        computed_degrees = [self.compute_degrees(node.label) for node in self.nodes]
+        node_count = self.get_node_count()
+        count_in_degree = {}
+        count_out_degree = {}
+        count_undirected_degree = {}
+
+        distribution = {
+            'undirected_distribution': 0,
+            'in_distribution': 0,
+            'out_distribution': 0
+        }
+
+        for computed_degree in computed_degrees:
+            in_degree = computed_degree.get('in_degree', 0)
+            out_degree = computed_degree.get('out_degree', 0)
+            undirected_degree = computed_degree.get('undirected_degree', 0)
+
+           
+            count_in_degree[in_degree] = count_in_degree.get(in_degree, 0) + 1
+
+            count_out_degree[out_degree] = count_out_degree.get(out_degree, 0) + 1
+        
+            count_undirected_degree[undirected_degree] = count_undirected_degree.get(undirected_degree, 0) + 1
+
+        distribution = {
+            'undirected_distribution': {k: v / node_count for k, v in count_undirected_degree.items()},
+            'in_distribution': {k: v / node_count for k, v in count_in_degree.items()},
+            'out_distribution': {k: v / node_count for k, v in count_out_degree.items()}
+        }
+
+        return distribution
+
 
 
     def output_html(self, file_name, layout=RandomLayout, style=GraphStyle(), override_positions=False):
