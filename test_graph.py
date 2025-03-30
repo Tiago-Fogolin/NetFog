@@ -176,6 +176,36 @@ class GraphTest(TestCase):
         self.assertEqual(degrees_node4['undirected_degree'], 1)
         self.assertEqual(degrees_node4['total_degree'], 1)
 
+    def test_all_nodes_degrees(self):
+        degrees_dict = self.grafo.get_all_nodes_degrees()
+
+        expected_dict = {
+            'node1': {
+                'in_degree': 0,
+                'out_degree': 0,
+                'undirected_degree': 2,
+                'total_degree': 0
+            },
+            'node2': {
+                'in_degree': 1,
+                'out_degree': 0,
+                'undirected_degree': 2,
+                'total_degree': 1
+            },
+            'node3': {
+                'in_degree': 0,
+                'out_degree': 2,
+                'undirected_degree': 1,
+                'total_degree': 2
+            },
+            'node4': {
+                'in_degree': 1,
+                'out_degree': 0,
+                'undirected_degree': 1,
+                'total_degree': 1
+            }
+        }
+        
     def test_get_average_degree(self):
         expected_mean_degree = (2 * 5) / 4
         self.assertEqual(self.grafo.get_average_degree(directed=False), expected_mean_degree)

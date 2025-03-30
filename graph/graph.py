@@ -244,6 +244,16 @@ class Graph:
                 degrees['undirected_degree'] += 1
 
         return degrees
+    
+    def get_all_nodes_degrees(self):
+        degree_dict = {}
+
+        for node in self.nodes:
+            degree = self.compute_degrees(node.label)
+
+            degree_dict[node.label] = degree
+
+        return degree_dict
 
     def get_average_degree(self, directed=False):
         multiply = 1 if directed else 2
