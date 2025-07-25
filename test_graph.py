@@ -33,6 +33,13 @@ class GraphTest(TestCase):
         graph = Graph()
         self.assertIsInstance(graph, Graph)
 
+    def test_node_by_label(self):
+        graph = Graph()
+
+        novo_node = graph.add_node('test')
+
+        self.assertEqual(novo_node, graph.node_by_label('test'))
+
     def test_add_node(self):
         graph = Graph()
         graph.add_node('new_node')
@@ -256,8 +263,47 @@ class GraphTest(TestCase):
         self.assertEqual(distribution['out_distribution'], expected_distribution['out_distribution'])
         self.assertEqual(distribution['undirected_distribution'], expected_distribution['undirected_distribution'])
     
-       
+    def test_dfs(self):
+        grafo = Graph()
 
+        node1 = grafo.add_node('1')
+        node2 = grafo.add_node('2')
+        node3 = grafo.add_node('3')
+        node4 = grafo.add_node('4')
+        node5 = grafo.add_node('5')
+
+        grafo.create_connection('1', '2')
+        grafo.create_connection('1', '3')
+        grafo.create_connection('2', '4')
+        grafo.create_connection('2', '5')
+
+        expected_order = [node1,node2,node4,node5,node3]
+
+        self.assertEqual(expected_order, grafo.dfs())
+       
+    def test_bfs(self):
+        grafo = Graph()
+
+        node0 = grafo.add_node('0')
+        node1 = grafo.add_node('1')
+        node2 = grafo.add_node('2')
+        node3 = grafo.add_node('3')
+        node4 = grafo.add_node('4')
+        node5 = grafo.add_node('5')
+        node6 = grafo.add_node('6')
+        node7 = grafo.add_node('7')
+
+        grafo.create_connection('0', '1')
+        grafo.create_connection('0', '2')
+        grafo.create_connection('0', '3')
+        grafo.create_connection('1', '4')
+        grafo.create_connection('1', '5')
+        grafo.create_connection('2', '6')
+        grafo.create_connection('3', '7')
+
+        expected_order = [node0,node1,node2,node3,node4,node5,node6,node7]
+
+        self.assertEqual(expected_order, grafo.bfs())
 
 
         

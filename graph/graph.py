@@ -5,6 +5,7 @@ from layouts.layouts import RandomLayout, normalize_positions
 from file_reader.file_reader import FileReaderTemplate, NetFileReader, JsonFileReader
 from file_writer.file_writer import NetFileWriter, JsonFileWriter
 from style.graph_style import GraphStyle
+from collections import deque
 
 def create_nodes_from_labels(size, labels):
         str_list = labels if labels else list(map(str, range(size)))
@@ -73,6 +74,16 @@ class Graph:
         if str(new_node) not in list(map(str, self.nodes)):
             self.nodes.append(new_node)
 
+        return new_node
+    
+    def node_by_label(self, label):
+
+        for node in self.nodes:
+            if node.label == label:
+                return node
+
+        return None
+    
     def create_connection(self, from_: str, to_: str, weight: int = 1, directed: bool = False):
         """
         Args:
@@ -326,7 +337,49 @@ class Graph:
 
         return distribution
 
+    def dfs(self, start_node_label=''):
+        """
+            Returns the nodes in order, when transversed by a dfs algorithm
+        """
+        final_order = []
+        
+        visited = set()
 
+        def _dfs(node):
+            final_order.append(node)
+            visited.add(node)
+
+            for conn in node.connections:
+                if conn['node'] not in visited:
+                    _dfs(conn['node'])
+
+        start_node = self.nodes[0] if not start_node_label else self.node_by_label(start_node_label)
+
+        _dfs(start_node)
+
+        return final_order
+
+    def bfs(self, start_node_label=''):
+        """
+            Returns the nodes in order, when transversed by a bfs algorithm
+        """
+        final_order = []
+
+        start_node = self.nodes[0] if not start_node_label else self.node_by_label(start_node_label)
+        q = deque([start_node])
+        visited = set([start_node])
+
+        while q:
+            node = q.popleft()
+            final_order.append(node)
+            
+            for conn in node.connections:
+                if conn['node'] not in visited:
+
+                    q.append(conn['node'])
+                    visited.add(conn['node'])
+
+        return final_order
 
     def output_html(self, file_name, layout=RandomLayout, style=GraphStyle(), override_positions=False):
         svg_writer = SVGWriter(graph_style=style)
