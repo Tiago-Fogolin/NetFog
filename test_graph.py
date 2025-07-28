@@ -305,5 +305,28 @@ class GraphTest(TestCase):
 
         self.assertEqual(expected_order, grafo.bfs())
 
+    def test_dijkstra(self):
+        grafo = Graph()
 
+        grafo.add_node('1')
+        grafo.add_node('2')
+        grafo.add_node('3')
+        grafo.add_node('4')
+        grafo.add_node('5')
+        grafo.add_node('6')
+
+        grafo.create_connection('1', '2', 9)
+        grafo.create_connection('1', '3', 4)
+        grafo.create_connection('2', '3', 2)
+        grafo.create_connection('2', '5', 3)
+        grafo.create_connection('2', '4', 7)
+        grafo.create_connection('3', '4', 1)
+        grafo.create_connection('3', '5', 6)
+        grafo.create_connection('4', '5', 4)
+        grafo.create_connection('4', '6', 8)
+        grafo.create_connection('5', '6', 2)
         
+        dijkstra_dists = grafo.dijkstra()
+
+        self.assertEqual(dijkstra_dists['6'], 11)
+  

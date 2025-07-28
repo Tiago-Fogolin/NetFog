@@ -198,6 +198,10 @@ class Graph:
             j = node_dict[conn['to']]
             adj_matrix[i][j] = int(conn['weight'])
 
+            if not conn['directed']:
+                adj_matrix[j][i] = int(conn['weight'])
+
+
         return adj_matrix
     
     def get_total_weight(self):
@@ -380,6 +384,37 @@ class Graph:
                     visited.add(conn['node'])
 
         return final_order
+
+    def dijkstra(self, start_node_label=''):
+        size = len(self.nodes)
+        start_vertex = self.nodes.index(self.node_by_label(start_node_label)) if start_node_label else 0
+        distances = {}
+        for i in range(size):
+            distances[self.nodes[i].label] = float('inf')
+        distances[self.nodes[start_vertex].label] = 0
+        visited = [False] * size
+        adj_matrix = self.generate_adjacency_matrix()
+ 
+        for _ in range(size):
+            min_distance = float('inf')
+            u = None
+            for i in range(size):
+                if not visited[i] and distances[self.nodes[i].label] < min_distance:
+                    min_distance = distances[self.nodes[i].label]
+                    u = i
+
+            if u is None:
+                break
+
+            visited[u] = True
+
+            for v in range(size):
+                if adj_matrix[u][v] != 0 and not visited[v]:
+                    alt = distances[self.nodes[u].label] + adj_matrix[u][v]
+                    if alt < distances[self.nodes[v].label]:
+                        distances[self.nodes[v].label] = alt
+
+        return distances
 
     def output_html(self, file_name, layout=RandomLayout, style=GraphStyle(), override_positions=False):
         svg_writer = SVGWriter(graph_style=style)
