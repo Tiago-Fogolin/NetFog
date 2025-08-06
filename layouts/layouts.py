@@ -7,7 +7,7 @@ MIN_WIDTH = 20
 MAX_HEIGHT = 700
 MIN_HEIGHT = 20
 
- 
+
 def denormalize_positions(normalized_positions):
     denormalized_positions = {}
 
@@ -104,4 +104,80 @@ class CircularLayout(LayoutTemplate):
 
            
        
+        return self.positions
+    
+class SpringLayout(LayoutTemplate):
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.positions = {}
+
+    def generate_positions(self, nodes):
+        # first display nodes in random position
+        self.positions = RandomLayout().generate_positions(nodes)
+
+        edges = set()
+        for node in nodes:
+            for conn in node.connections:
+                a, b = node.label, conn['node'].label
+                if (b, a) not in edges:
+                    edges.add((a, b))
+
+        iterations = 50
+        area = MAX_WIDTH * MAX_HEIGHT
+        temperature = MAX_WIDTH / 10
+        k = math.sqrt(area / len(nodes))
+
+        # attractive force
+        def fa(d): return (d * d) / k
+
+        # repulsive force
+        def fr(d): return (k * k) / d
+
+        
+        for _ in range(iterations):
+            disp = {node.label: {'x': 0, 'y': 0} for node in nodes}
+
+            # apply repulsive force
+            for v in nodes:
+                for u in nodes:
+                    if u.label != v.label:
+                        dx = self.positions[v.label]['x'] - self.positions[u.label]['x']
+                        dy = self.positions[v.label]['y'] - self.positions[u.label]['y']
+                        dist = math.hypot(dx, dy) + 0.01
+                        force = fr(dist)
+                        disp[v.label]['x'] += (dx / dist) * force
+                        disp[v.label]['y'] += (dy / dist) * force
+
+            # apply attractive force on the edges
+            for (v_label, u_label) in edges:
+                dx = self.positions[v_label]['x'] - self.positions[u_label]['x']
+                dy = self.positions[v_label]['y'] - self.positions[u_label]['y']
+                dist = math.hypot(dx, dy) + 0.01
+                force = fa(dist)
+                disp[v_label]['x'] -= (dx / dist) * force
+                disp[v_label]['y'] -= (dy / dist) * force
+                disp[u_label]['x'] += (dx / dist) * force
+                disp[u_label]['y'] += (dy / dist) * force
+
+            # apply the displacement based on the temperature
+            for i, node in enumerate(nodes):
+                dx = disp[node.label]['x']
+                dy = disp[node.label]['y']
+                disp_len = math.hypot(dx, dy)
+                if disp_len > 0:
+                    dx = (dx / disp_len) * min(disp_len, temperature)
+                    dy = (dy / disp_len) * min(disp_len, temperature)
+
+                x = self.positions[node.label]['x'] + dx
+                y = self.positions[node.label]['y'] + dy
+
+                x = min(MAX_WIDTH, max(MIN_WIDTH, x))
+                y = min(MAX_HEIGHT, max(MIN_HEIGHT, y))
+
+                self.positions[node.label] = {'x': x, 'y': y, 'index': i}
+
+            # cooling
+            temperature *= 0.95
+
         return self.positions
