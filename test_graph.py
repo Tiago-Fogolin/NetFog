@@ -158,6 +158,60 @@ class GraphTest(TestCase):
         expected_density_directed = (2 * 5) / (4 * (4 - 1))
         self.assertEqual(self.grafo.get_density(directed=True), expected_density_directed)
 
+    def test_get_node_strength_directed(self):
+        grafo = Graph()
+        grafo.add_node('1')
+        grafo.add_node('2')
+        grafo.add_node('3')
+
+        grafo.create_connection('1', '2', weight=2, directed=True)
+        grafo.create_connection('2', '3', weight=3, directed=True)
+
+        result = grafo.get_node_strength('1')
+
+        self.assertEqual(result['in_strength'], 0)
+        self.assertEqual(result['out_strength'], 2)
+        self.assertEqual(result['total_strength'], 2)
+
+    def test_get_node_strength_undirected(self):
+
+        grafo = Graph()
+        grafo.add_node('1')
+        grafo.add_node('2')
+        grafo.add_node('3')
+
+        grafo.create_connection('1', '2', weight=2, directed=False)
+        grafo.create_connection('2', '3', weight=3, directed=False)
+        grafo.create_connection('1', '3', weight=5, directed=False)
+
+        result = grafo.get_node_strength('3')
+        
+        self.assertEqual(result['in_strength'], 8)
+        self.assertEqual(result['out_strength'], 8)
+        self.assertEqual(result['total_strength'], 16)
+
+    def test_get_node_strength_mixed(self):
+        """
+            It is not very common to analyze the strength of a node in a mixed graph.
+            However, the library provides a way to build graphs with both directed and undirected edges.
+        """
+
+        grafo = Graph()
+        grafo.add_node('1')
+        grafo.add_node('2')
+        grafo.add_node('3')
+
+        grafo.create_connection('1', '2', weight=2, directed=False)
+        grafo.create_connection('2', '3', weight=3, directed=True)
+        grafo.create_connection('1', '3', weight=5, directed=False)
+
+        result = grafo.get_node_strength('2')
+        
+        self.assertEqual(result['in_strength'], 2)
+        self.assertEqual(result['out_strength'], 5)
+        self.assertEqual(result['total_strength'], 7)
+
+
     def test_compute_degrees(self):
         degrees_node1 = self.grafo.compute_degrees('node1')
         self.assertEqual(degrees_node1['in_degree'], 0)
@@ -212,6 +266,8 @@ class GraphTest(TestCase):
                 'total_degree': 1
             }
         }
+
+        self.assertEqual(degrees_dict, expected_dict)
         
     def test_get_average_degree(self):
         expected_mean_degree = (2 * 5) / 4

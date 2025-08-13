@@ -122,7 +122,7 @@ class Graph:
 
         return all_connections
     
-    def from_adjacency_matrix(adj_matrix: list , directed: bool = False, custom_labels: list = None):
+    def from_adjacency_matrix(adj_matrix: list , directed: bool = False, custom_labels: list = None) -> 'Graph':
         """
         Args:
             adj_matrix (list): A list that represents the connections of the graph.
@@ -279,6 +279,36 @@ class Graph:
         mean = (multiply * edge_count) / (node_count)
 
         return mean
+    
+    def get_node_strength(self, node_label: str):
+        """
+            Returns the out_strength, in_strength, and total_strength of a node
+        """
+
+        connections = self.get_connections()
+
+        strengths = {
+            "out_strength": 0,
+            "in_strength": 0,
+            "total_strength": 0
+        }
+
+        for conn in connections:
+            if conn['from'] == node_label:
+                strengths['out_strength'] += conn['weight']
+
+                if not conn['directed']:
+                    strengths['in_strength'] += conn['weight']
+
+            if conn['to'] == node_label:
+                strengths['in_strength'] += conn['weight']
+
+                if not conn['directed']:
+                    strengths['out_strength'] += conn['weight']
+
+        strengths['total_strength'] = strengths['out_strength'] + strengths['in_strength']
+
+        return strengths
 
     def get_centrality_degree(self, node_label: str):
         """
