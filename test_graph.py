@@ -319,6 +319,31 @@ class GraphTest(TestCase):
         self.assertEqual(distribution['out_distribution'], expected_distribution['out_distribution'])
         self.assertEqual(distribution['undirected_distribution'], expected_distribution['undirected_distribution'])
     
+    def test_compute_entropy(self):
+        entropy = self.grafo.compute_entropy()
+
+        expected_entropy = {
+            'in_entropy': 0.6931,
+            'out_entropy': 0.5623,
+            'undirected_entropy': 0.6931
+        }
+
+        self.assertAlmostEqual(entropy['in_entropy'], expected_entropy['in_entropy'], places=4)
+        self.assertAlmostEqual(entropy['out_entropy'], expected_entropy['out_entropy'], places=4)
+        self.assertAlmostEqual(entropy['undirected_entropy'], expected_entropy['undirected_entropy'], places=4)
+
+    def test_get_max_possible_entropy(self):
+        max_entropy = self.grafo.get_max_possible_entropy()
+        self.assertAlmostEqual(max_entropy, 1.0986, places=4)
+
+    def test_get_skewness(self):
+        skewness = self.grafo.get_skewness()
+
+
+        self.assertAlmostEqual(skewness['in_skewness'], 0.6, places=4)
+        self.assertAlmostEqual(skewness['out_skewness'], 0.4, places=4)
+        self.assertAlmostEqual(skewness['undirected_skewness'], 0.8666, places=4)
+
     def test_dfs(self):
         grafo = Graph()
 

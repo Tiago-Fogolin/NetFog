@@ -6,6 +6,7 @@ from file_reader.file_reader import FileReaderTemplate, NetFileReader, JsonFileR
 from file_writer.file_writer import NetFileWriter, JsonFileWriter
 from style.graph_style import GraphStyle
 from collections import deque
+import math
 
 def create_nodes_from_labels(size, labels):
         str_list = labels if labels else list(map(str, range(size)))
@@ -259,7 +260,108 @@ class Graph:
                 degrees['undirected_degree'] += 1
 
         return degrees
+
+    def compute_entropy(self):
+        result = {
+            'in_entropy': 0,
+            'out_entropy': 0,
+            'undirected_entropy': 0
+        }
+
+        dist = self.get_degree_distribution()
+
+        for degree, dist_value in dist['in_distribution'].items():
+            result['in_entropy'] += dist_value * math.log(dist_value, math.e)
+
+        for degree, dist_value in dist['out_distribution'].items():
+            result['out_entropy'] += dist_value * math.log(dist_value, math.e)
+
+        for degree, dist_value in dist['undirected_distribution'].items():
+            result['undirected_entropy'] += dist_value * math.log(dist_value, math.e)
+
+        result['in_entropy'] = -result['in_entropy']
+        result['out_entropy'] = -result['out_entropy']
+        result['undirected_entropy'] = -result['undirected_entropy']
+
+        return result
     
+    def get_max_possible_entropy(self):
+        return math.log(self.get_node_count() - 1, math.e)
+
+    
+
+    def get_skewness(self):
+
+
+        def _rank_degree_for_skewness(degree_collection):
+            sorted_degrees = sorted(degree_collection.items(), key=lambda x: x[1], reverse=True)
+            ranked = []
+
+            for i, (node_label, degree) in enumerate(sorted_degrees, start=1):
+                rank = (i, degree)
+                ranked.append(rank)
+
+            return ranked
+        
+        def _get_ranked_degrees(all_nodes_degrees):
+            ranked_degrees = []
+
+            for degree_type in ['in_degree', 'out_degree', 'undirected_degree']:
+                ranked = _rank_degree_for_skewness({x: all_nodes_degrees[x][degree_type] for x in all_nodes_degrees})
+                ranked_degrees.append(ranked)
+
+            return ranked_degrees
+        
+        def _compute_sknums(ranked_degrees):
+            sknums = []
+            for ranked_degree in ranked_degrees:
+
+                result = 0
+                for rank, degree in ranked_degree:
+                    result += rank * degree
+
+                sknums.append(result)
+
+            return sknums
+        
+        def _compute_sku(ranked_degrees, node_count):
+            mean_degrees = []
+            for ranked in ranked_degrees:
+                if ranked:
+                    degrees = [degree for rank, degree in ranked]
+                    mean_degrees.append(sum(degrees) / len(degrees))
+                else:
+                    mean_degrees.append(0)
+
+            skus = []
+
+            for degree in mean_degrees:
+                skus.append(degree * (node_count * (node_count + 1) / 2))
+
+            return skus
+
+        result = {
+            'in_skewness': 0,
+            'out_skewness': 0,
+            'undirected_skewness': 0
+        }
+
+        degrees = self.get_all_nodes_degrees()
+
+        ranked_degrees = _get_ranked_degrees(degrees)
+
+        sknums = _compute_sknums(ranked_degrees)
+
+        skus = _compute_sku(ranked_degrees, self.get_node_count())
+
+        result['in_skewness'] = sknums[0] / skus[0]
+        result['out_skewness'] = sknums[1] / skus[1]
+        result['undirected_skewness'] = sknums[2] / skus[2]
+
+        return result
+
+
+
     def get_all_nodes_degrees(self):
         degree_dict = {}
 
