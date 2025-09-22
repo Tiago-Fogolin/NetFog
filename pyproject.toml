@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=42", "wheel", "setuptools-rust"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netfog"
+version = "0.1.0"
+description = "Sua descrição do projeto"
+authors = [{ name = "Seu Nome", email = "seu_email@example.com" }]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3.11",
+]
+
+[tool.setuptools-rust]
+bindings = "pyo3"

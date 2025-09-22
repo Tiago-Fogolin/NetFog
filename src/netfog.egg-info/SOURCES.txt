@@ -1,0 +1,5 @@
+pyproject.toml
+src/netfog.egg-info/PKG-INFO
+src/netfog.egg-info/SOURCES.txt
+src/netfog.egg-info/dependency_links.txt
+src/netfog.egg-info/top_level.txt

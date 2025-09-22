@@ -1,0 +1,140 @@
+use crate::graph_core::node::{self, _Node};
+use std::{collections::HashMap};
+use std::cell::RefCell;
+use std::rc::{Rc};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ConnectionProperty  {
+    From(String),
+    To(String),
+    Weight(i32),
+    Directed(bool)
+}
+
+pub type PositionMap = HashMap<String, i32>;
+pub type ConnectionData = HashMap<String, ConnectionProperty>;
+pub type ConnectionsList = Vec<ConnectionData>;
+
+pub struct _Graph {
+    pub nodes: Vec<Rc<RefCell<_Node>>>,
+    normalized_positions: HashMap<String, PositionMap>
+}
+
+
+impl _Graph {
+    pub fn add_node(&mut self, label: String) {
+        let mut new_node = _Node{
+            label: label,
+            connections: Vec::new()
+        };
+
+        self.nodes.push(Rc::new(RefCell::new(new_node)));
+    }
+
+    pub fn create_connection(&mut self, from: String, to: String, weight: i32, directed: Option<bool>) {
+        let directed = Some(directed.unwrap_or(false));
+
+        let from_node = self.nodes.iter().find(|n| n.borrow().label == from)
+                .expect("Node 'from' not found")
+                .clone();
+
+            let to_node = self.nodes.iter().find(|n| n.borrow().label == to)
+                .expect("Node 'to' not found")
+                .clone();
+
+        let to_node_ref = Rc::clone(&to_node);
+
+        from_node.borrow_mut().add_connection(to_node_ref, weight, directed);
+    }
+
+    pub fn get_connections(&mut self) -> ConnectionsList {
+        let mut all_connections = ConnectionsList::new();
+
+        for n in &mut self.nodes {
+            let mut node = n.borrow();
+
+            for conn in node.connections.iter() {
+                let mut formatted_conn = ConnectionData::new();
+
+
+                formatted_conn.insert("from".to_string(), ConnectionProperty::From(node.label.clone()));
+
+                if let Some(to_node_rc) = conn.node.upgrade() {
+                    
+                    let to_label = to_node_rc.borrow().label.clone();
+                    formatted_conn.insert("to".to_string(), ConnectionProperty::To(to_label));
+                } else {
+                    formatted_conn.insert("to".to_string(), ConnectionProperty::To("[Removed]".to_string()));
+                };
+
+                formatted_conn.insert("weight".to_string(), ConnectionProperty::Weight(conn.weight));
+                formatted_conn.insert("directed".to_string(), ConnectionProperty::Directed(conn.directed));
+
+                all_connections.push(formatted_conn);
+            }
+        }
+
+        return all_connections;
+    }
+}
+
+fn create_nodes_from_labels(size: usize, labels: Option<Vec<String>>) -> Vec<Rc<RefCell<_Node>>> {
+    let labels = labels.unwrap_or_else(|| {
+        (0..size).map(|x| x.to_string()).collect()
+    });
+    let mut node_list: Vec<Rc<RefCell<_Node>>> = Vec::new(); 
+    for label in labels {
+        let new_node = _Node {
+                label,
+                connections: Vec::new(),
+            };
+        
+        node_list.push(Rc::new(RefCell::new(new_node)));
+    }
+
+    return node_list;
+}
+
+fn create_node_hashmap(nodes: &Vec<Rc<RefCell<_Node>>>, start_index: usize)  -> HashMap<usize, String> {
+    let node_hash: HashMap<usize, String> = nodes
+                .iter()
+                .enumerate()
+                .map(|(i, x)| (i + start_index, x.borrow().label.clone()))
+                .collect();
+
+    return node_hash;
+}
+
+impl _Graph {
+    pub fn default() -> Self {
+        return _Graph {
+            nodes: Vec::new(),
+            normalized_positions: HashMap::new()
+        };
+    }
+
+    pub fn from_adjacency_matrix(adj_matrix: Vec<Vec<i32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>) -> Self {
+        let mut adj_matrix_graph = _Graph::default();
+
+        adj_matrix_graph.nodes = create_nodes_from_labels(adj_matrix.len(), custom_labels);
+        let node_hash = create_node_hashmap(&adj_matrix_graph.nodes, 0);
+        
+        for i in 0..adj_matrix.len() {
+            for j in 0..adj_matrix.len() {
+                let weight = adj_matrix[i][j]; 
+
+                if weight != 0 {
+                    adj_matrix_graph.create_connection(
+                        node_hash.get(&i).expect("Node not found").clone(), 
+                        node_hash.get(&j).expect("Node not found").clone(), 
+                        weight,
+                        directed
+                    );
+                }
+
+            }
+        }
+
+        return adj_matrix_graph;
+    }
+}
