@@ -39,6 +39,3 @@ g.create_connection("A", "B", weight=10, directed=False)
 # Check all connections
 print(g.get_connections())
 ```
-
-
-For full documentation, see [docs](docs/index.md)
