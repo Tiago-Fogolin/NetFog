@@ -172,6 +172,10 @@ impl _Graph {
 
         return total_weight;
     }
+
+    pub fn get_mean_weight(&mut self) -> f32 {
+        return self.get_total_weight() / self.get_connections().len() as f32;
+    }
 }
 
 
