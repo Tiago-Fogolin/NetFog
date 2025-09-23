@@ -4,7 +4,7 @@ use std::cell::RefCell;
 
 pub struct Connection {
     pub node: Weak<RefCell<_Node>>,
-    pub weight: i32,
+    pub weight: f32,
     pub directed: bool
 }
 
@@ -15,7 +15,7 @@ pub struct _Node {
 }
 
 impl _Node {
-    pub fn add_connection(&mut self, node: Rc<RefCell<_Node>>, weight: i32, directed: Option<bool>) {
+    pub fn add_connection(&mut self, node: Rc<RefCell<_Node>>, weight: f32, directed: Option<bool>) {
         let directed = directed.unwrap_or(false);
         let new_conn = Connection {
             node: Rc::downgrade(&node),

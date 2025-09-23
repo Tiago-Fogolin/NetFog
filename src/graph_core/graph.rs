@@ -4,11 +4,11 @@ use std::{collections::HashMap};
 use std::cell::RefCell;
 use std::rc::{Rc};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionProperty  {
     From(String),
     To(String),
-    Weight(i32),
+    Weight(f32),
     Directed(bool)
 }
 
@@ -70,7 +70,7 @@ impl _Graph {
         self.nodes.push(Rc::new(RefCell::new(new_node)));
     }
 
-    pub fn create_connection(&mut self, from: String, to: String, weight: i32, directed: Option<bool>) {
+    pub fn create_connection(&mut self, from: String, to: String, weight: f32, directed: Option<bool>) {
         let directed = Some(directed.unwrap_or(false));
 
         let from_node = self.nodes.iter().find(|n| n.borrow().label == from)
@@ -116,14 +116,14 @@ impl _Graph {
         return all_connections;
     }
 
-    pub fn generate_adjacency_matrix(&mut self) -> Vec<Vec<i32>> {
+    pub fn generate_adjacency_matrix(&mut self) -> Vec<Vec<f32>> {
         let matrix_size = self.nodes.len();
-        let mut adj_matrix = vec![vec![0; matrix_size]; matrix_size];
+        let mut adj_matrix: Vec<Vec<f32>> = vec![vec![0.; matrix_size]; matrix_size];
         let node_hash = invert_node_hashmap(create_node_hashmap(&self.nodes, 0));
         let connections = self.get_connections();
 
         for conn in connections {
-            
+
             let from_label = match &conn["from"] {
                 ConnectionProperty::From(s) => s,
                 _ => unreachable!(),
@@ -157,6 +157,21 @@ impl _Graph {
         return adj_matrix;
 
     }
+
+    pub fn get_total_weight(&mut self) -> f32 {
+        let total_weight: f32 = self.get_connections()
+            .iter()
+            .map(|conn| {
+                if let ConnectionProperty::Weight(w) = conn["weight"] {
+                    w
+                } else {
+                    0.
+                }
+            })
+            .sum();
+
+        return total_weight;
+    }
 }
 
 
@@ -168,7 +183,7 @@ impl _Graph {
         };
     }
 
-    pub fn from_adjacency_matrix(adj_matrix: Vec<Vec<i32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>) -> Self {
+    pub fn from_adjacency_matrix(adj_matrix: Vec<Vec<f32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>) -> Self {
         let mut adj_matrix_graph = _Graph::default();
 
         adj_matrix_graph.nodes = create_nodes_from_labels(adj_matrix.len(), custom_labels);
@@ -178,7 +193,7 @@ impl _Graph {
             for j in 0..adj_matrix.len() {
                 let weight = adj_matrix[i][j]; 
 
-                if weight != 0 {
+                if weight != 0. {
                     adj_matrix_graph.create_connection(
                         node_hash.get(&i).expect("Node not found").clone(), 
                         node_hash.get(&j).expect("Node not found").clone(), 

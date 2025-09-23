@@ -30,7 +30,7 @@ impl Graph {
         return Py::new(py, node);
     }
 
-    fn create_connection(&self, from_label: String, to_label: String, weight: i32, directed: Option<bool>) {
+    fn create_connection(&self, from_label: String, to_label: String, weight: f32, directed: Option<bool>) {
         self.inner.borrow_mut().create_connection(from_label, to_label, weight, directed);
     }
 
@@ -66,7 +66,7 @@ impl Graph {
     }
 
     #[staticmethod]
-    fn from_adjacency_matrix(adj_matrix: Vec<Vec<i32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>) -> Graph {
+    fn from_adjacency_matrix(adj_matrix: Vec<Vec<f32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>) -> Graph {
         let graph = _Graph::from_adjacency_matrix(adj_matrix, directed, custom_labels);
         return Graph {
             inner: Rc::new(RefCell::new(graph)),

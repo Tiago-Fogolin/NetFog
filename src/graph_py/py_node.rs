@@ -23,7 +23,7 @@ impl Node {
         }
     }
 
-    fn add_connection(&self, node: &Node, weight: i32, directed: Option<bool>) {
+    fn add_connection(&self, node: &Node, weight: f32, directed: Option<bool>) {
         self.inner.borrow_mut().add_connection(node.inner.clone(), weight, directed);
     }
 

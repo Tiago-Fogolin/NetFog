@@ -1,7 +1,7 @@
 use netfog::*;
 use std::collections::HashMap;
 
-fn make_conn(from: &str, to: &str, weight: i32, directed: bool) -> HashMap<String, ConnectionProperty> {
+fn make_conn(from: &str, to: &str, weight: f32, directed: bool) -> HashMap<String, ConnectionProperty> {
     let mut conn = HashMap::new();
     conn.insert("from".to_string(), ConnectionProperty::From(from.to_string()));
     conn.insert("to".to_string(), ConnectionProperty::To(to.to_string()));
@@ -15,8 +15,8 @@ fn test_from_adjacency_matrix() {
     
 
     let adj_matrix = vec![
-        vec![0, 1],
-        vec![1, 0],
+        vec![0., 1.],
+        vec![1., 0.],
     ];
 
     let mut graph = _Graph::from_adjacency_matrix(
@@ -26,17 +26,17 @@ fn test_from_adjacency_matrix() {
     );
 
     let connections = vec![
-        make_conn("one", "two", 1, false),
-        make_conn("two", "one", 1, false),
+        make_conn("one", "two", 1., false),
+        make_conn("two", "one", 1., false),
     ];
 
     assert_eq!(connections, graph.get_connections());
 
     // Segundo grafo
     let adj_matrix2 = vec![
-        vec![0, 2, 1],
-        vec![1, 0, 3],
-        vec![1, 2, 0],
+        vec![0., 2., 1.],
+        vec![1., 0., 3.],
+        vec![1., 2., 0.],
     ];
 
     let mut graph2 = _Graph::from_adjacency_matrix(
@@ -50,12 +50,12 @@ fn test_from_adjacency_matrix() {
     );
 
     let connections2 = vec![
-        make_conn("one", "two", 2, false),
-        make_conn("one", "three", 1, false),
-        make_conn("two", "one", 1, false),
-        make_conn("two", "three", 3, false),
-        make_conn("three", "one", 1, false),
-        make_conn("three", "two", 2, false),
+        make_conn("one", "two", 2., false),
+        make_conn("one", "three", 1., false),
+        make_conn("two", "one", 1., false),
+        make_conn("two", "three", 3., false),
+        make_conn("three", "one", 1., false),
+        make_conn("three", "two", 2., false),
     ];
 
     assert_eq!(connections2, graph2.get_connections());
@@ -64,9 +64,9 @@ fn test_from_adjacency_matrix() {
 #[test]
 fn test_generate_adjacency_matrix() {
     let adj_matrix = vec![
-        vec![0, 2, 1],
-        vec![1, 0, 3],
-        vec![1, 2, 0],
+        vec![0., 2., 1.],
+        vec![1., 0., 3.],
+        vec![1., 2., 0.],
     ];
 
     let mut graph = _Graph::from_adjacency_matrix(adj_matrix.clone(), Some(false), None);
