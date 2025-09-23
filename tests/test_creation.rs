@@ -60,3 +60,19 @@ fn test_from_adjacency_matrix() {
 
     assert_eq!(connections2, graph2.get_connections());
 }
+
+#[test]
+fn test_generate_adjacency_matrix() {
+    let adj_matrix = vec![
+        vec![0, 2, 1],
+        vec![1, 0, 3],
+        vec![1, 2, 0],
+    ];
+
+    let mut graph = _Graph::from_adjacency_matrix(adj_matrix.clone(), Some(false), None);
+
+    let generated_adj_matrix = graph.generate_adjacency_matrix();
+
+
+    assert_eq!(adj_matrix, generated_adj_matrix);
+}

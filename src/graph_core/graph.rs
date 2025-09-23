@@ -1,4 +1,5 @@
 use crate::graph_core::node::{self, _Node};
+use std::hint::unreachable_unchecked;
 use std::{collections::HashMap};
 use std::cell::RefCell;
 use std::rc::{Rc};
@@ -18,6 +19,44 @@ pub type ConnectionsList = Vec<ConnectionData>;
 pub struct _Graph {
     pub nodes: Vec<Rc<RefCell<_Node>>>,
     normalized_positions: HashMap<String, PositionMap>
+}
+
+
+fn create_nodes_from_labels(size: usize, labels: Option<Vec<String>>) -> Vec<Rc<RefCell<_Node>>> {
+    let labels = labels.unwrap_or_else(|| {
+        (0..size).map(|x| x.to_string()).collect()
+    });
+    let mut node_list: Vec<Rc<RefCell<_Node>>> = Vec::new(); 
+    for label in labels {
+        let new_node = _Node {
+                label,
+                connections: Vec::new(),
+            };
+        
+        node_list.push(Rc::new(RefCell::new(new_node)));
+    }
+
+    return node_list;
+}
+
+fn create_node_hashmap(nodes: &Vec<Rc<RefCell<_Node>>>, start_index: usize)  -> HashMap<usize, String> {
+    let node_hash: HashMap<usize, String> = nodes
+                .iter()
+                .enumerate()
+                .map(|(i, x)| (i + start_index, x.borrow().label.clone()))
+                .collect();
+
+    return node_hash;
+}
+
+fn invert_node_hashmap(node_hashmap: HashMap<usize, String>) -> HashMap<String, usize> {
+    let mut inverted_node_hash: HashMap<String, usize> = HashMap::new();
+
+    for (key, value) in node_hashmap.iter() {
+        inverted_node_hash.insert(value.clone(), *key);
+    }
+
+    return inverted_node_hash;
 }
 
 
@@ -76,34 +115,50 @@ impl _Graph {
 
         return all_connections;
     }
-}
 
-fn create_nodes_from_labels(size: usize, labels: Option<Vec<String>>) -> Vec<Rc<RefCell<_Node>>> {
-    let labels = labels.unwrap_or_else(|| {
-        (0..size).map(|x| x.to_string()).collect()
-    });
-    let mut node_list: Vec<Rc<RefCell<_Node>>> = Vec::new(); 
-    for label in labels {
-        let new_node = _Node {
-                label,
-                connections: Vec::new(),
+    pub fn generate_adjacency_matrix(&mut self) -> Vec<Vec<i32>> {
+        let matrix_size = self.nodes.len();
+        let mut adj_matrix = vec![vec![0; matrix_size]; matrix_size];
+        let node_hash = invert_node_hashmap(create_node_hashmap(&self.nodes, 0));
+        let connections = self.get_connections();
+
+        for conn in connections {
+            
+            let from_label = match &conn["from"] {
+                ConnectionProperty::From(s) => s,
+                _ => unreachable!(),
             };
-        
-        node_list.push(Rc::new(RefCell::new(new_node)));
+
+            let to_label = match &conn["to"] {
+                ConnectionProperty::To(s) => s,
+                _ => unreachable!(),
+            };
+
+            let weight = match &conn["weight"] {
+                ConnectionProperty::Weight(w) => w,
+                _ => unreachable!(),
+            };
+
+            let directed = match &conn["directed"] {
+                ConnectionProperty::Directed(d) => d,
+                _ => unreachable!(),
+            };
+
+            let i = node_hash[from_label];
+            let j = node_hash[to_label];
+            adj_matrix[i][j] = *weight;
+
+            if *directed {
+                adj_matrix[j][i] = *weight;
+            }
+
+        }
+
+        return adj_matrix;
+
     }
-
-    return node_list;
 }
 
-fn create_node_hashmap(nodes: &Vec<Rc<RefCell<_Node>>>, start_index: usize)  -> HashMap<usize, String> {
-    let node_hash: HashMap<usize, String> = nodes
-                .iter()
-                .enumerate()
-                .map(|(i, x)| (i + start_index, x.borrow().label.clone()))
-                .collect();
-
-    return node_hash;
-}
 
 impl _Graph {
     pub fn default() -> Self {
