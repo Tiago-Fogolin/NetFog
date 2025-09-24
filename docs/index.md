@@ -28,7 +28,8 @@ This library is designed to be **lightweight, fast, and easy to use**.
 
 ## 2. Graph Metrics
 
-- **Python**
+- [*Python*](python/metrics.md)
+
 
 
 ## 3. Algorithms
