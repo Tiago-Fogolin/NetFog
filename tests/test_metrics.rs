@@ -1,6 +1,23 @@
 use netfog::*;
 
 
+fn create_simple_graph() -> _Graph {
+    let mut graph = _Graph::default();
+    graph.add_node("node1".to_string());
+    graph.add_node("node2".to_string());
+    graph.add_node("node3".to_string());
+    graph.add_node("node4".to_string());
+
+    
+    graph.create_connection("node1".to_string(), "node2".to_string(), 2., Some(false));
+    graph.create_connection("node3".to_string(), "node4".to_string(), 4., Some(true));
+    graph.create_connection("node4".to_string(), "node1".to_string(), 5.5, Some(false));
+    graph.create_connection("node3".to_string(), "node2".to_string(), 1.2, Some(true));
+    graph.create_connection("node2".to_string(), "node3".to_string(), 1.6, Some(false));
+
+    return graph;
+}
+
 #[test]
 fn test_total_weight() {
     let mut graph = _Graph::default();
@@ -68,22 +85,38 @@ fn test_edge_count() {
 
 #[test]
 fn test_density() {
-    let mut grafo = _Graph::default();
-    grafo.add_node("node1".to_string());
-    grafo.add_node("node2".to_string());
-    grafo.add_node("node3".to_string());
-    grafo.add_node("node4".to_string());
-
-    
-    grafo.create_connection("node1".to_string(), "node2".to_string(), 2., Some(false));
-    grafo.create_connection("node3".to_string(), "node4".to_string(), 4., Some(true));
-    grafo.create_connection("node4".to_string(), "node1".to_string(), 5.5, Some(false));
-    grafo.create_connection("node3".to_string(), "node2".to_string(), 1.2, Some(true));
-    grafo.create_connection("node2".to_string(), "node3".to_string(), 1.6, Some(false));
-
+    let mut grafo = create_simple_graph();
     let expected_density = (1. * 5.) / (4. * (4. - 1.));
     assert_eq!(expected_density, grafo.get_density(Some(false)));
 
     let expected_density_directed = (2. * 5.) / (4. * (4. - 1.));
     assert_eq!(expected_density_directed, grafo.get_density(Some(true)));
+}
+
+#[test]
+fn test_compute_degrees() {
+    let mut grafo = create_simple_graph();
+    let degrees_node1 = grafo.compute_degrees("node1");
+    assert_eq!(degrees_node1["in_degree"], 0);
+    assert_eq!(degrees_node1["out_degree"], 0);
+    assert_eq!(degrees_node1["undirected_degree"], 2);
+    assert_eq!(degrees_node1["total_degree"], 0);
+
+    let degrees_node2 = grafo.compute_degrees("node2");
+    assert_eq!(degrees_node2["in_degree"], 1);
+    assert_eq!(degrees_node2["out_degree"], 0);
+    assert_eq!(degrees_node2["undirected_degree"], 2);
+    assert_eq!(degrees_node2["total_degree"], 1);
+
+    let degrees_node3 = grafo.compute_degrees("node3");
+    assert_eq!(degrees_node3["in_degree"], 0);
+    assert_eq!(degrees_node3["out_degree"], 2);
+    assert_eq!(degrees_node3["undirected_degree"], 1);
+    assert_eq!(degrees_node3["total_degree"], 2);
+
+    let degrees_node4 = grafo.compute_degrees("node4");
+    assert_eq!(degrees_node4["in_degree"], 1);
+    assert_eq!(degrees_node4["out_degree"], 0);
+    assert_eq!(degrees_node4["undirected_degree"], 1);
+    assert_eq!(degrees_node4["total_degree"], 1);
 }

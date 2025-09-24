@@ -82,6 +82,17 @@ impl Graph {
     pub fn get_density(&self, directed: Option<bool>) -> PyResult<f32> {
         return Ok(self.inner.borrow_mut().get_density(directed));
     }
+
+    pub fn compute_degrees(&self, node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let degrees_snapshot = self.inner.borrow_mut().compute_degrees(node_label);
+        let degrees = PyDict::new(py);
+
+        for (key, value) in degrees_snapshot.iter() {
+            degrees.set_item(key, value)?;
+        }
+
+        return Ok(degrees.into());
+    }
     
     #[getter]
     fn nodes(&self) -> Vec<Node> {

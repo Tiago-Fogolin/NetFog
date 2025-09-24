@@ -1,4 +1,5 @@
 use crate::graph_core::node::{self, _Node};
+use std::hash::Hash;
 use std::hint::unreachable_unchecked;
 use std::{collections::HashMap};
 use std::cell::RefCell;
@@ -209,6 +210,53 @@ impl _Graph {
 
     pub fn get_mean_weight(&mut self) -> f32 {
         return self.get_total_weight() / self.get_connections().len() as f32;
+    }
+
+    pub fn compute_degrees(&mut self, node_label: &str) -> HashMap<String, i32> {
+        let connections = self.get_connections();
+
+        let mut degrees: HashMap<String, i32> = HashMap::new();
+        degrees.insert("in_degree".to_string(), 0);
+        degrees.insert("out_degree".to_string(), 0);
+        degrees.insert("total_degree".to_string(), 0);
+        degrees.insert("undirected_degree".to_string(), 0);
+
+        for conn in  connections {
+            let directed = match &conn["directed"] {
+                ConnectionProperty::Directed(d) => d,
+                _ => unreachable!()
+            };
+
+            let from = match &conn["from"] {
+                ConnectionProperty::From(f) => f,
+                _ => unreachable!()
+            };
+
+            let to = match &conn["to"] {
+                ConnectionProperty::To(f) => f,
+                _ => unreachable!()
+            };
+
+            if *directed {
+                if from == node_label {
+                    *degrees.entry("out_degree".to_string()).or_insert(0) += 1;
+                    *degrees.entry("total_degree".to_string()).or_insert(0) += 1;
+                }
+
+                if to == node_label {
+                    *degrees.entry("in_degree".to_string()).or_insert(0) += 1;
+                    *degrees.entry("total_degree".to_string()).or_insert(0) += 1;
+                }
+
+                continue;
+            }
+
+            if to == node_label || from == node_label {
+                *degrees.entry("undirected_degree".to_string()).or_insert(0) += 1;
+            }
+        }
+
+        return degrees;
     }
 }
 
