@@ -62,6 +62,16 @@ fn invert_node_hashmap(node_hashmap: HashMap<usize, String>) -> HashMap<String, 
 
 impl _Graph {
     pub fn add_node(&mut self, label: String) {
+
+        let exists = self.nodes.iter().any(|node_rc| {
+            node_rc.borrow().label == label
+        });
+
+        if exists {
+            println!("Node with label '{}' already exists!", label);
+            return;
+        }
+
         let mut new_node = _Node{
             label: label,
             connections: Vec::new()
@@ -70,6 +80,7 @@ impl _Graph {
         self.nodes.push(Rc::new(RefCell::new(new_node)));
     }
 
+    // O(n) bullshit, will be fixed in future updates, same thing in the add_node method
     pub fn create_connection(&mut self, from: String, to: String, weight: f32, directed: Option<bool>) {
         let directed = Some(directed.unwrap_or(false));
 
@@ -171,6 +182,29 @@ impl _Graph {
             .sum();
 
         return total_weight;
+    }
+
+    pub fn get_node_count(&self) -> usize {
+        return self.nodes.len();
+    }
+
+    pub fn get_edge_count(&mut self) -> usize {
+        return self.get_connections().len();
+    }
+
+    pub fn get_density(&mut self, directed: Option<bool>) -> f32 {
+        let edge_count = self.get_edge_count() as f32;
+        let node_count = self.get_node_count() as f32;
+        let directed = directed.unwrap_or(false);
+        let multiply = if directed {
+            2.
+        } else {
+            1.
+        };
+
+        let density: f32 = (multiply * edge_count) / (node_count * (node_count - 1.));
+
+        return density;
     }
 
     pub fn get_mean_weight(&mut self) -> f32 {

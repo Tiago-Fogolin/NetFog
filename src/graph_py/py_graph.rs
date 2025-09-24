@@ -70,6 +70,18 @@ impl Graph {
     fn get_mean_weight(&self) -> PyResult<f32> {
         return Ok(self.inner.borrow_mut().get_mean_weight());
     }
+
+    pub fn get_node_count(&self) -> PyResult<usize> {
+        return Ok(self.inner.borrow().get_node_count());
+    }
+
+    pub fn get_edge_count(&self) -> PyResult<usize> {
+        return Ok(self.inner.borrow_mut().get_edge_count());
+    }
+
+    pub fn get_density(&self, directed: Option<bool>) -> PyResult<f32> {
+        return Ok(self.inner.borrow_mut().get_density(directed));
+    }
     
     #[getter]
     fn nodes(&self) -> Vec<Node> {
