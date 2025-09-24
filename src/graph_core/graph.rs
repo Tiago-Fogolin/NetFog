@@ -148,7 +148,7 @@ impl _Graph {
             let j = node_hash[to_label];
             adj_matrix[i][j] = *weight;
 
-            if *directed {
+            if !*directed {
                 adj_matrix[j][i] = *weight;
             }
 

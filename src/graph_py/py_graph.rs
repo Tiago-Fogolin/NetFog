@@ -59,7 +59,20 @@ impl Graph {
         return Ok(all_connections);
     }
 
-    fn get_nodes(&self) -> Vec<Node> {
+    fn generate_adjacency_matrix(&self) -> PyResult<Vec<Vec<f32>>> {
+        return Ok(self.inner.borrow_mut().generate_adjacency_matrix());
+    }
+
+    fn get_total_weight(&self) -> PyResult<f32> {
+        return Ok(self.inner.borrow_mut().get_total_weight());
+    }
+
+    fn get_mean_weight(&self) -> PyResult<f32> {
+        return Ok(self.inner.borrow_mut().get_mean_weight());
+    }
+    
+    #[getter]
+    fn nodes(&self) -> Vec<Node> {
         self.inner.borrow().nodes.iter()
             .map(|rc_node| Node { inner: rc_node.clone() })
             .collect()

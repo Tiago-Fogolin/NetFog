@@ -21,9 +21,6 @@ Represents a graph. You can add nodes, create connections, inspect the graph, an
 - `get_connections() -> list`  
   Returns a list of all connections in the graph.
 
-- `get_nodes() -> list`  
-  Returns a list of all nodes in the graph.
-
 - `from_adjacency_matrix(adj_matrix: list, directed: bool, custom_labels: list | None = None) -> Graph`  
   Creates a graph from an adjacency matrix. Optional custom labels can be provided.
 ---
@@ -46,7 +43,6 @@ g.create_connection("A", "B", weight=10, directed=False)
 g.create_connection("C", "B", weight=5, directed=True)
 
 # Inspect graph
-print("Nodes:", g.get_nodes())
 print("Connections:", g.get_connections())
 
 # Create graph from adjacency matrix
@@ -58,3 +54,4 @@ adj_matrix = [
 g2 = Graph.from_adjacency_matrix(adj_matrix, directed=True, custom_labels=["X", "Y", "Z"])
 print("Nodes in g2:", g2.get_nodes())
 print("Connections in g2:", g2.get_connections())
+```

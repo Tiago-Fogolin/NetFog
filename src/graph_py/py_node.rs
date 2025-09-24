@@ -27,6 +27,10 @@ impl Node {
         self.inner.borrow_mut().add_connection(node.inner.clone(), weight, directed);
     }
 
+    fn __repr__(&self) -> PyResult<String> {
+        return Ok(format!("Node(\"{}\")", self.label()));
+    }
+
     #[getter]
     fn label(&self) -> String {
         self.inner.borrow().label.clone()
