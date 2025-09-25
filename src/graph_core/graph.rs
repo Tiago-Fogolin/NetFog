@@ -258,6 +258,40 @@ impl _Graph {
 
         return degrees;
     }
+
+    pub fn get_all_nodes_degrees(&mut self) -> HashMap<String, HashMap<String, i32>> {
+        let mut degree_hash: HashMap<String, HashMap<String, i32>> = HashMap::new();
+
+        let labels: Vec<String> = self.nodes
+                .iter()
+                .map(|n| n.borrow().label.clone())
+                .collect();
+
+        for label in labels {
+            let degree = self.compute_degrees(&label);
+            degree_hash.insert(label,degree);
+        }
+
+        return degree_hash;
+    }
+
+    pub fn get_average_degree(&mut self, directed: Option<bool>) -> f32 {
+        let directed = directed.unwrap_or(false);
+        let multiply = if directed {
+            1
+        } 
+        else {
+            2
+        } as f32;
+
+        let edge_count = self.get_edge_count() as f32;
+        let node_count = self.get_node_count() as f32;
+
+        let mean = (multiply * edge_count) / (node_count);
+
+        return mean;
+    }
+
 }
 
 

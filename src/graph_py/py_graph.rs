@@ -93,6 +93,22 @@ impl Graph {
 
         return Ok(degrees.into());
     }
+
+    pub fn get_all_nodes_degrees(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let degrees = PyDict::new(py);
+        let all_node_degrees_hash = self.inner.borrow_mut().get_all_nodes_degrees();
+
+        for (key, value) in all_node_degrees_hash.iter() {
+            degrees.set_item(key, value)?;
+        }
+
+        return Ok(degrees.into());
+    }
+
+    pub fn get_average_degree(&self, directed: Option<bool>) -> PyResult<f32> {
+        let average_degree = self.inner.borrow_mut().get_average_degree(directed);
+        return Ok(average_degree);
+    }
     
     #[getter]
     fn nodes(&self) -> Vec<Node> {

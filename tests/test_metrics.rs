@@ -120,3 +120,61 @@ fn test_compute_degrees() {
     assert_eq!(degrees_node4["undirected_degree"], 1);
     assert_eq!(degrees_node4["total_degree"], 1);
 }
+
+#[test]
+fn test_all_nodes_degrees() {
+    let mut grafo = create_simple_graph();
+    let degrees_dict = grafo.get_all_nodes_degrees();
+
+    let mut expected_dict = std::collections::HashMap::new();
+
+    expected_dict.insert("node1".to_string(), {
+        let mut m = std::collections::HashMap::new();
+        m.insert("in_degree".to_string(), 0);
+        m.insert("out_degree".to_string(), 0);
+        m.insert("undirected_degree".to_string(), 2);
+        m.insert("total_degree".to_string(), 0);
+        m
+    });
+
+    expected_dict.insert("node2".to_string(), {
+        let mut m = std::collections::HashMap::new();
+        m.insert("in_degree".to_string(), 1);
+        m.insert("out_degree".to_string(), 0);
+        m.insert("undirected_degree".to_string(), 2);
+        m.insert("total_degree".to_string(), 1);
+        m
+    });
+
+    expected_dict.insert("node3".to_string(), {
+        let mut m = std::collections::HashMap::new();
+        m.insert("in_degree".to_string(), 0);
+        m.insert("out_degree".to_string(), 2);
+        m.insert("undirected_degree".to_string(), 1);
+        m.insert("total_degree".to_string(), 2);
+        m
+    });
+
+    expected_dict.insert("node4".to_string(), {
+        let mut m = std::collections::HashMap::new();
+        m.insert("in_degree".to_string(), 1);
+        m.insert("out_degree".to_string(), 0);
+        m.insert("undirected_degree".to_string(), 1);
+        m.insert("total_degree".to_string(), 1);
+        m
+    });
+
+    assert_eq!(degrees_dict, expected_dict);
+}
+
+#[test]
+fn test_get_average_degree() {
+    let mut grafo = create_simple_graph();
+
+    let expected_mean_degree = (2. * 5.) / 4.;
+    assert_eq!(grafo.get_average_degree(Some(false)), expected_mean_degree);
+
+    let expected_mean_degree_directed = (1. * 5.) / 4.;
+    assert_eq!(grafo.get_average_degree(Some(true)), expected_mean_degree_directed);
+
+}

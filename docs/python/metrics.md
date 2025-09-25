@@ -31,7 +31,13 @@ Returns the density of the graph.
   - `out_degree`: number of outgoing edges (for directed edges)  
   - `undirected_degree`: number of edges that are not directed  
   - `total_degree`: sum of all edges connected to the node
+  
+- `get_all_nodes_degrees() -> dict`  
+  Returns a dictionary containing the degree metrics for each node in the graph
+  - The dictionary key is the node label, and the value is another dictionary with the degree metrics (same as the return of compute_degrees).
 
+- `get_average_degree() -> float`  
+  Returns the average degree of the graph.
 ---
 
 ## Python Examples
@@ -57,4 +63,12 @@ print("Graph density (directed):", g.get_density(directed=True))
 # Compute degrees for a node
 degrees_B = g.compute_degrees("B")
 print("Degrees for B:", degrees_B)
+
+# Compute degrees for all nodes
+all_degrees = g.get_all_nodes_degrees()
+print("Degrees for all nodes:", all_degrees)
+
+# Get the average degree of the graph
+avg_deg = g.get_average_degree(directed=False)
+print(avg_deg)
 ```
