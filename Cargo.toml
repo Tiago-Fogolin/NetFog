@@ -8,6 +8,7 @@ name = "netfog"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+approx = "0.5.1"
 pyo3 = { version = "0.26.0", features = ["extension-module"] }
 pyo3-stub-gen = "0.13.1"
 

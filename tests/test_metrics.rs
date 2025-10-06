@@ -1,4 +1,5 @@
 use netfog::*;
+use approx::assert_abs_diff_eq;
 
 
 fn create_simple_graph() -> _Graph {
@@ -165,6 +166,35 @@ fn test_all_nodes_degrees() {
     });
 
     assert_eq!(degrees_dict, expected_dict);
+}
+
+#[test]
+fn test_get_centrality_degree() {
+    let mut grafo = create_simple_graph();
+
+    let centralities = grafo.get_centrality_degrees("node1");
+    assert_eq!(centralities["in_centrality"], 0.);
+    assert_eq!(centralities["out_centrality"], 0.);
+    assert_eq!(centralities["total_centrality"], 0.);
+    assert_abs_diff_eq!(centralities["undirected_centrality"], 2./3., epsilon = 1e-10);
+    
+    let centralities = grafo.get_centrality_degrees("node2");
+    assert_abs_diff_eq!(centralities["in_centrality"], 1./3., epsilon = 1e-10);
+    assert_eq!(centralities["out_centrality"], 0.);
+    assert_abs_diff_eq!(centralities["total_centrality"], 1./3., epsilon = 1e-10);
+    assert_abs_diff_eq!(centralities["undirected_centrality"], 2./3., epsilon = 1e-10);
+
+    let centralities = grafo.get_centrality_degrees("node3");
+    assert_eq!(centralities["in_centrality"], 0.);
+    assert_abs_diff_eq!(centralities["out_centrality"], 2./3., epsilon = 1e-10);
+    assert_abs_diff_eq!(centralities["total_centrality"], 2./3., epsilon = 1e-10);
+    assert_abs_diff_eq!(centralities["undirected_centrality"], 1./3., epsilon = 1e-10);
+
+    let centralities = grafo.get_centrality_degrees("node4");
+    assert_abs_diff_eq!(centralities["in_centrality"], 1./3., epsilon = 1e-10);
+    assert_eq!(centralities["out_centrality"], 0.);
+    assert_abs_diff_eq!(centralities["total_centrality"], 1./3., epsilon = 1e-10);
+    assert_abs_diff_eq!(centralities["undirected_centrality"], 1./3., epsilon = 1e-10);
 }
 
 #[test]

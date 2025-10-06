@@ -94,6 +94,18 @@ impl Graph {
         return Ok(degrees.into());
     }
 
+    pub fn get_centrality_degrees(&self, node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let mut inner = self.inner.borrow_mut();
+        let centrality_snapshot = inner.get_centrality_degrees(node_label);
+        let centralities = PyDict::new(py);
+
+         for (key, value) in centrality_snapshot.iter() {
+            centralities.set_item(key, value)?;
+        }
+
+        return Ok(centralities.into());
+    }
+
     pub fn get_all_nodes_degrees(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let degrees = PyDict::new(py);
         let all_node_degrees_hash = self.inner.borrow_mut().get_all_nodes_degrees();

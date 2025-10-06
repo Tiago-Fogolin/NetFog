@@ -292,6 +292,24 @@ impl _Graph {
         return mean;
     }
 
+    pub fn get_centrality_degrees(&mut self, node_label: &str) -> HashMap<&str, f32> {
+        let mut centralities: HashMap<&str, f32> = HashMap::new();
+
+        let degrees = self.compute_degrees(node_label);
+        let node_count = self.get_node_count();
+
+        if node_count <= 1 {
+            return centralities;
+        }
+
+        centralities.insert("out_centrality", degrees["out_degree"] as f32 / (node_count - 1) as f32); 
+        centralities.insert("in_centrality", degrees["in_degree"] as f32 / (node_count - 1) as f32); 
+        centralities.insert("total_centrality", degrees["total_degree"] as f32 / (node_count - 1) as f32); 
+        centralities.insert("undirected_centrality", degrees["undirected_degree"] as f32 / (node_count - 1) as f32); 
+
+        return centralities;
+    }
+
 }
 
 
