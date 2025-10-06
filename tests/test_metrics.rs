@@ -208,3 +208,56 @@ fn test_get_average_degree() {
     assert_eq!(grafo.get_average_degree(Some(true)), expected_mean_degree_directed);
 
 }
+
+#[test]
+fn test_get_node_strength_directed() {
+    let mut grafo = _Graph::default();
+    grafo.add_node("1".to_string());
+    grafo.add_node("2".to_string());
+    grafo.add_node("3".to_string());
+
+    grafo.create_connection("1".to_string(), "2".to_string(), 2.0, Some(true));
+    grafo.create_connection("2".to_string(), "3".to_string(), 3.0, Some(true));
+
+    let strengths = grafo.get_node_strength("1");
+
+    assert_eq!(strengths["in_strength"], 0.0);
+    assert_eq!(strengths["out_strength"], 2.0);
+    assert_eq!(strengths["total_strength"], 2.0);
+}
+
+#[test]
+fn test_get_node_strength_undirected() {
+    let mut grafo = _Graph::default();
+    grafo.add_node("1".to_string());
+    grafo.add_node("2".to_string());
+    grafo.add_node("3".to_string());
+
+    grafo.create_connection("1".to_string(), "2".to_string(), 2.0, Some(false));
+    grafo.create_connection("2".to_string(), "3".to_string(), 3.0, Some(false));
+    grafo.create_connection("1".to_string(), "3".to_string(), 5.0, Some(false));
+
+    let strengths = grafo.get_node_strength("3");
+
+    assert_eq!(strengths["in_strength"], 8.0);
+    assert_eq!(strengths["out_strength"], 8.0);
+    assert_eq!(strengths["total_strength"], 16.0);
+}
+
+#[test]
+fn test_get_node_strength_mixed() {
+    let mut grafo = _Graph::default();
+    grafo.add_node("1".to_string());
+    grafo.add_node("2".to_string());
+    grafo.add_node("3".to_string());
+
+    grafo.create_connection("1".to_string(), "2".to_string(), 2.0, Some(false));
+    grafo.create_connection("2".to_string(), "3".to_string(), 3.0, Some(true));
+    grafo.create_connection("1".to_string(), "3".to_string(), 5.0, Some(false));
+
+    let strengths = grafo.get_node_strength("2");
+
+    assert_eq!(strengths["in_strength"], 2.0);
+    assert_eq!(strengths["out_strength"], 5.0);
+    assert_eq!(strengths["total_strength"], 7.0);
+}

@@ -99,11 +99,23 @@ impl Graph {
         let centrality_snapshot = inner.get_centrality_degrees(node_label);
         let centralities = PyDict::new(py);
 
-         for (key, value) in centrality_snapshot.iter() {
+        for (key, value) in centrality_snapshot.iter() {
             centralities.set_item(key, value)?;
         }
 
         return Ok(centralities.into());
+    }
+
+    pub fn get_node_strength(&self, node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let mut inner = self.inner.borrow_mut();
+        let strength_snapshot = inner.get_node_strength(node_label);
+        let strength = PyDict::new(py);
+
+        for (key, value) in strength_snapshot.iter() {
+            strength.set_item(key, value)?;
+        }
+
+        return Ok(strength.into());
     }
 
     pub fn get_all_nodes_degrees(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {

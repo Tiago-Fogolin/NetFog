@@ -292,6 +292,64 @@ impl _Graph {
         return mean;
     }
 
+    pub fn get_node_strength(&mut self, node_label: &str) -> HashMap<&str, f32> {
+        let connections = self.get_connections();
+
+        let mut strengths: HashMap<&str, f32> = HashMap::new();
+
+        strengths.insert("out_strength", 0.);
+        strengths.insert("in_strength", 0.);
+        strengths.insert("total_strength", 0.);
+
+        for conn in connections {
+
+            
+            
+            let from_label = match &conn["from"] {
+                ConnectionProperty::From(s) => s,
+                _ => unreachable!(),
+            };
+
+            
+            let to_label = match &conn["to"] {
+                ConnectionProperty::To(s) => s,
+                _ => unreachable!(),
+            };
+
+            let weight = match &conn["weight"] {
+                ConnectionProperty::Weight(w) => w,
+                _ => unreachable!(),
+            };
+
+            let directed = match &conn["directed"] {
+                ConnectionProperty::Directed(d) => d,
+                _ => unreachable!(),
+            };
+
+            if from_label == node_label {
+                *strengths.get_mut("out_strength").unwrap() += *weight;
+
+                if !*directed {
+                    *strengths.get_mut("in_strength").unwrap() += *weight;
+                }
+            }
+
+            if to_label == node_label {
+                *strengths.get_mut("in_strength").unwrap() += *weight;
+
+                if !*directed {
+                    *strengths.get_mut("out_strength").unwrap() += *weight;
+                }
+            }
+
+        }
+
+        *strengths.get_mut("total_strength").unwrap() = strengths["out_strength"] + strengths["in_strength"];
+
+
+        return strengths;
+    }
+
     pub fn get_centrality_degrees(&mut self, node_label: &str) -> HashMap<&str, f32> {
         let mut centralities: HashMap<&str, f32> = HashMap::new();
 

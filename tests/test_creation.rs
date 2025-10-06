@@ -41,7 +41,7 @@ fn test_from_adjacency_matrix() {
 
     let mut graph2 = _Graph::from_adjacency_matrix(
         adj_matrix2,
-        Some(false),
+        Some(true),
         Some(vec![
             "one".to_string(),
             "two".to_string(),
@@ -50,12 +50,12 @@ fn test_from_adjacency_matrix() {
     );
 
     let connections2 = vec![
-        make_conn("one", "two", 2., false),
-        make_conn("one", "three", 1., false),
-        make_conn("two", "one", 1., false),
-        make_conn("two", "three", 3., false),
-        make_conn("three", "one", 1., false),
-        make_conn("three", "two", 2., false),
+        make_conn("one", "two", 2., true),
+        make_conn("one", "three", 1., true),
+        make_conn("two", "one", 1., true),
+        make_conn("two", "three", 3., true),
+        make_conn("three", "one", 1., true),
+        make_conn("three", "two", 2., true),
     ];
 
     assert_eq!(connections2, graph2.get_connections());
@@ -65,8 +65,8 @@ fn test_from_adjacency_matrix() {
 fn test_generate_adjacency_matrix() {
     let adj_matrix = vec![
         vec![0., 2., 1.],
-        vec![1., 0., 3.],
-        vec![1., 2., 0.],
+        vec![2., 0., 3.],
+        vec![1., 3., 0.],
     ];
 
     let mut graph = _Graph::from_adjacency_matrix(adj_matrix.clone(), Some(false), None);
