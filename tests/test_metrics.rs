@@ -1,3 +1,5 @@
+use std::hash::Hash;
+use std::{collections::HashMap};
 use netfog::*;
 use approx::assert_abs_diff_eq;
 
@@ -260,4 +262,29 @@ fn test_get_node_strength_mixed() {
     assert_eq!(strengths["in_strength"], 2.0);
     assert_eq!(strengths["out_strength"], 5.0);
     assert_eq!(strengths["total_strength"], 7.0);
+}
+
+#[test]
+fn test_degree_distribution() {
+    let mut grafo = create_simple_graph();
+    let distribution = grafo.get_degree_distribution();
+
+    let expected_distribution: HashMap<&str, HashMap<i32, f32>> = HashMap::from([
+        ("in_distribution", HashMap::from([
+            (0, 0.5),
+            (1, 0.5),
+        ])),
+        ("out_distribution", HashMap::from([
+            (2, 0.25),
+            (0, 0.75),
+        ])),
+        ("undirected_distribution", HashMap::from([
+            (2, 0.5),
+            (1, 0.5),
+        ])),
+    ]);
+
+    assert_eq!(distribution["in_distribution"], expected_distribution["in_distribution"]);
+    assert_eq!(distribution["out_distribution"], expected_distribution["out_distribution"]);
+    assert_eq!(distribution["undirected_distribution"], expected_distribution["undirected_distribution"]);
 }

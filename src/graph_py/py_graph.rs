@@ -133,6 +133,18 @@ impl Graph {
         let average_degree = self.inner.borrow_mut().get_average_degree(directed);
         return Ok(average_degree);
     }
+
+    pub fn get_degree_distribution(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let mut inner = self.inner.borrow_mut();
+        let distribution_snapshot = inner.get_degree_distribution();
+        let mut distribution = PyDict::new(py);
+
+        for (key, value) in distribution_snapshot.iter() {
+            distribution.set_item(key, value)?;
+        }
+
+        return Ok(distribution.into());
+    }
     
     #[getter]
     fn nodes(&self) -> Vec<Node> {

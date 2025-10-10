@@ -368,6 +368,58 @@ impl _Graph {
         return centralities;
     }
 
+    pub fn get_degree_distribution(&mut self) -> HashMap<&str, HashMap<i32 ,f32>>{
+        let mut computed_degrees: Vec<HashMap<String, i32>> = Vec::new();
+
+        let mut nodes = self.nodes.clone();
+
+        for n in &mut nodes {
+            let mut node = n.borrow();
+
+            computed_degrees.push(self.compute_degrees(&node.label));
+        }
+
+        let node_count = self.get_node_count();
+        let mut count_in_degree: HashMap<i32, i32> = HashMap::new();
+        let mut count_out_degree: HashMap<i32, i32> = HashMap::new();
+        let mut count_undirected_degree: HashMap<i32, i32> = HashMap::new();
+
+        
+
+        for mut computed_degree in computed_degrees {
+            let in_degree = *computed_degree.get_mut("in_degree").unwrap();
+            let out_degree = *computed_degree.get_mut("out_degree").unwrap();
+            let undirected_degree = *computed_degree.get_mut("undirected_degree").unwrap();
+
+            *count_in_degree.entry(in_degree).or_insert(0) += 1;
+            *count_out_degree.entry(out_degree).or_insert(0) += 1;
+            *count_undirected_degree.entry(undirected_degree).or_insert(0) += 1;
+        }
+
+        let undirected_distribution: HashMap<i32, f32> = count_undirected_degree
+            .iter()
+            .map(|(&k, &v)| (k, v as f32 / node_count as f32))
+            .collect();
+
+        let in_distribution: HashMap<i32, f32> = count_in_degree
+            .iter()
+            .map(|(&k, &v)| (k, v as f32 / node_count as f32))
+            .collect();
+
+        let out_distribution: HashMap<i32, f32> = count_out_degree
+            .iter()
+            .map(|(&k, &v)| (k, v as f32 / node_count as f32))
+            .collect();
+        
+        let mut distribution: HashMap<&str, HashMap<i32 ,f32>> = HashMap::new();
+
+        distribution.insert("undirected_distribution", undirected_distribution);
+        distribution.insert("in_distribution", in_distribution);
+        distribution.insert("out_distribution", out_distribution);
+
+        return distribution;
+    }
+
 }
 
 
