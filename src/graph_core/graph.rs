@@ -1,9 +1,12 @@
+use crate::Node;
 use crate::graph_core::node::{self, _Node};
+use std::f64;
 use std::hash::Hash;
-use std::hint::unreachable_unchecked;
-use std::{collections::HashMap};
+use std::{collections::HashMap, collections::HashSet, collections::VecDeque};
 use std::cell::RefCell;
 use std::rc::{Rc};
+use crate::svg_creation::svg_creation::Svg;
+use crate::layout::layout::Layout;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionProperty  {
@@ -19,7 +22,8 @@ pub type ConnectionsList = Vec<ConnectionData>;
 
 pub struct _Graph {
     pub nodes: Vec<Rc<RefCell<_Node>>>,
-    normalized_positions: HashMap<String, PositionMap>
+    pub positions_set: bool,
+    _current_index: usize
 }
 
 
@@ -27,13 +31,20 @@ fn create_nodes_from_labels(size: usize, labels: Option<Vec<String>>) -> Vec<Rc<
     let labels = labels.unwrap_or_else(|| {
         (0..size).map(|x| x.to_string()).collect()
     });
-    let mut node_list: Vec<Rc<RefCell<_Node>>> = Vec::new(); 
+    let mut node_list: Vec<Rc<RefCell<_Node>>> = Vec::new();
+    let mut current_index: usize = 0;
     for label in labels {
         let new_node = _Node {
                 label,
                 connections: Vec::new(),
+                index: Some(current_index),
+                x: None,
+                y: None,
+
             };
-        
+
+        current_index += 1;
+
         node_list.push(Rc::new(RefCell::new(new_node)));
     }
 
@@ -73,10 +84,16 @@ impl _Graph {
             return;
         }
 
-        let mut new_node = _Node{
+        let new_node = _Node{
             label: label,
-            connections: Vec::new()
+            connections: Vec::new(),
+            index: Some(self._current_index),
+            x: None,
+            y: None,
+
         };
+
+        self._current_index += 1;
 
         self.nodes.push(Rc::new(RefCell::new(new_node)));
     }
@@ -89,20 +106,29 @@ impl _Graph {
                 .expect("Node 'from' not found")
                 .clone();
 
-            let to_node = self.nodes.iter().find(|n| n.borrow().label == to)
-                .expect("Node 'to' not found")
-                .clone();
+        let to_node = self.nodes.iter().find(|n| n.borrow().label == to)
+            .expect("Node 'to' not found")
+            .clone();
 
         let to_node_ref = Rc::clone(&to_node);
 
         from_node.borrow_mut().add_connection(to_node_ref, weight, directed);
     }
 
+    pub fn node_by_label(&self, label: &str) -> Option<Rc<RefCell<_Node>>> {
+        for n in &self.nodes {
+            if n.borrow().label == label {
+                return Some(Rc::clone(n));
+            }
+        }
+        return None;
+    }
+
     pub fn get_connections(&mut self) -> ConnectionsList {
         let mut all_connections = ConnectionsList::new();
 
         for n in &mut self.nodes {
-            let mut node = n.borrow();
+            let node = n.borrow();
 
             for conn in node.connections.iter() {
                 let mut formatted_conn = ConnectionData::new();
@@ -111,7 +137,7 @@ impl _Graph {
                 formatted_conn.insert("from".to_string(), ConnectionProperty::From(node.label.clone()));
 
                 if let Some(to_node_rc) = conn.node.upgrade() {
-                    
+
                     let to_label = to_node_rc.borrow().label.clone();
                     formatted_conn.insert("to".to_string(), ConnectionProperty::To(to_label));
                 } else {
@@ -279,7 +305,7 @@ impl _Graph {
         let directed = directed.unwrap_or(false);
         let multiply = if directed {
             1
-        } 
+        }
         else {
             2
         } as f32;
@@ -303,14 +329,14 @@ impl _Graph {
 
         for conn in connections {
 
-            
-            
+
+
             let from_label = match &conn["from"] {
                 ConnectionProperty::From(s) => s,
                 _ => unreachable!(),
             };
 
-            
+
             let to_label = match &conn["to"] {
                 ConnectionProperty::To(s) => s,
                 _ => unreachable!(),
@@ -360,10 +386,10 @@ impl _Graph {
             return centralities;
         }
 
-        centralities.insert("out_centrality", degrees["out_degree"] as f32 / (node_count - 1) as f32); 
-        centralities.insert("in_centrality", degrees["in_degree"] as f32 / (node_count - 1) as f32); 
-        centralities.insert("total_centrality", degrees["total_degree"] as f32 / (node_count - 1) as f32); 
-        centralities.insert("undirected_centrality", degrees["undirected_degree"] as f32 / (node_count - 1) as f32); 
+        centralities.insert("out_centrality", degrees["out_degree"] as f32 / (node_count - 1) as f32);
+        centralities.insert("in_centrality", degrees["in_degree"] as f32 / (node_count - 1) as f32);
+        centralities.insert("total_centrality", degrees["total_degree"] as f32 / (node_count - 1) as f32);
+        centralities.insert("undirected_centrality", degrees["undirected_degree"] as f32 / (node_count - 1) as f32);
 
         return centralities;
     }
@@ -384,7 +410,7 @@ impl _Graph {
         let mut count_out_degree: HashMap<i32, i32> = HashMap::new();
         let mut count_undirected_degree: HashMap<i32, i32> = HashMap::new();
 
-        
+
 
         for mut computed_degree in computed_degrees {
             let in_degree = *computed_degree.get_mut("in_degree").unwrap();
@@ -410,7 +436,7 @@ impl _Graph {
             .iter()
             .map(|(&k, &v)| (k, v as f32 / node_count as f32))
             .collect();
-        
+
         let mut distribution: HashMap<&str, HashMap<i32 ,f32>> = HashMap::new();
 
         distribution.insert("undirected_distribution", undirected_distribution);
@@ -420,6 +446,257 @@ impl _Graph {
         return distribution;
     }
 
+    pub fn compute_entropy(&mut self) -> HashMap<&str, f32> {
+        let mut result: HashMap<&str, f32> = HashMap::new();
+
+        let dist: HashMap<&str, HashMap<i32 ,f32>> = self.get_degree_distribution();
+        let mut in_entropy: f32 = 0.;
+        let mut out_entropy: f32 = 0.;
+        let mut undirected_entropy: f32 = 0.;
+
+        for (degree, dist_value) in &dist["in_distribution"] {
+            in_entropy += dist_value * dist_value.ln();
+        }
+
+        for (degree, dist_value) in &dist["out_distribution"] {
+            out_entropy += dist_value * dist_value.ln();
+        }
+
+        for (degree, dist_value) in &dist["undirected_distribution"] {
+            undirected_entropy += dist_value * dist_value.ln();
+        }
+
+        result.insert("in_entropy", -in_entropy);
+        result.insert("out_entropy", -out_entropy);
+        result.insert("undirected_entropy", -undirected_entropy);
+
+        return result;
+    }
+
+    pub fn get_max_possible_entropy(&mut self) -> f64 {
+        let nodes_minus_1 = (self.get_node_count() - 1) as f64;
+        return nodes_minus_1.ln();
+    }
+
+    pub fn get_skewness(&mut self) -> HashMap<&str, f32> {
+
+        fn _rank_degree_for_skewness(degree_collection: HashMap<String, i32>) -> Vec<(usize, i32)> {
+            let mut sorted_degrees: Vec<(String, i32)> = degree_collection.into_iter().collect();
+            sorted_degrees.sort_by(|a, b| b.1.cmp(&a.1));
+
+            let mut ranked: Vec<(usize, i32)> = Vec::new();
+
+
+            for i in 1..=sorted_degrees.len() {
+                let (node_label, degree) = sorted_degrees[i - 1].clone();
+                let rank = (i, degree);
+                ranked.push(rank);
+            }
+
+            return ranked;
+        }
+
+        fn _get_ranked_degrees(all_nodes_degrees: HashMap<String, HashMap<String, i32>>) -> Vec<Vec<(usize, i32)>> {
+            let mut ranked_degrees: Vec<Vec<(usize, i32)>>  = Vec::new();
+
+            for degree_type in ["in_degree", "out_degree", "undirected_degree"] {
+                let current_degree_map: HashMap<String, i32> = all_nodes_degrees
+                    .iter()
+                    .map(|(node_id, metrics)| {
+                        let val = *metrics.get(degree_type).unwrap_or(&0);
+                        (node_id.clone(), val)
+                    })
+                    .collect();
+
+                let ranked: Vec<(usize, i32)> = _rank_degree_for_skewness(current_degree_map);
+                ranked_degrees.push(ranked);
+            }
+
+            return ranked_degrees;
+
+        }
+
+        fn _compute_sknums(ranked_degrees: &Vec<Vec<(usize, i32)>>) -> Vec<f32> {
+            let mut sknums: Vec<f32> = Vec::new();
+
+            for ranked_degree in ranked_degrees {
+                let mut result: f32 = 0.;
+                for (rank, degree) in ranked_degree {
+                    result += ((*rank) as i32 * degree) as f32;
+                }
+                sknums.push(result);
+            }
+
+            return sknums;
+        }
+
+        fn _compute_sku(ranked_degrees: &Vec<Vec<(usize, i32)>>, node_count: usize) -> Vec<f32> {
+            let mut mean_degrees: Vec<f32> = Vec::new();
+            for ranked in ranked_degrees {
+                if !ranked.is_empty() {
+                    let degrees: Vec<i32> = ranked.iter().map(|(rank, degree)| *degree).collect();
+                    let total = degrees.iter().sum::<i32>() as f32;
+                    let count = degrees.len() as f32;
+
+                    mean_degrees.push(total / count);
+                }
+                else {
+                    mean_degrees.push(0.);
+                }
+            }
+
+            let mut skus: Vec<f32> = Vec::new();
+
+            for degree in mean_degrees {
+                let node_count_f = node_count as f32;
+                let sku = degree * (node_count_f * (node_count_f + 1.) / 2.);
+                skus.push(sku);
+            }
+
+            return skus;
+        }
+
+        let mut result: HashMap<&str, f32> = HashMap::new();
+
+        let degrees = self.get_all_nodes_degrees();
+
+        let ranked_degrees = _get_ranked_degrees(degrees);
+
+        let sknums = _compute_sknums(&ranked_degrees);
+
+        let skus = _compute_sku(&ranked_degrees, self.get_node_count());
+
+        result.insert("in_skewness", sknums[0] / skus[0]);
+        result.insert("out_skewness", sknums[1] / skus[1]);
+        result.insert("undirected_skewness", sknums[2] / skus[2]);
+
+        return result;
+    }
+
+    /*
+     * This method has almost no purpouse right now, but the idea
+     * is that it'll be able to get a function that will be applied to each
+     * node in the future (same thing to bfs)
+     */
+    pub fn dfs(&mut self, start_node_label: &str) -> Vec<String> {
+        let mut final_order: Vec<String> = Vec::new();
+
+        let mut visited: HashSet<String> = HashSet::new();
+
+        let mut stack: Vec<Rc<RefCell<_Node>>> = Vec::new();
+        let starting_node: Rc<RefCell<_Node>> = self.node_by_label(start_node_label).expect("Error: Initial node not found");
+
+        stack.push(starting_node);
+
+        while let Some(n) = stack.pop() {
+            let node = n.borrow();
+
+            if !visited.insert(node.label.clone()) {
+                continue;
+            }
+
+            final_order.push(node.label.clone());
+
+            for conn in node.connections.iter().rev() {
+                if let Some(rc_node) = conn.node.upgrade() {
+                    let conn_node = rc_node.borrow();
+
+                    if !visited.contains(&conn_node.label) {
+                        stack.push(Rc::clone(&rc_node));
+                    }
+                }
+            }
+        }
+
+        return final_order;
+
+    }
+
+    pub fn bfs(&mut self, start_node_label: &str) -> Vec<String> {
+        let mut final_order: Vec<String> = Vec::new();
+
+        let mut q: VecDeque<Rc<RefCell<_Node>>> = VecDeque::new();
+        let mut visited: HashSet<String> = HashSet::new();
+
+        let starting_node: Rc<RefCell<_Node>> = self.node_by_label(start_node_label).expect("Error: Initial node not found");
+
+
+        visited.insert(start_node_label.to_string());
+        q.push_back(starting_node);
+
+        while let Some(n) = q.pop_front() {
+            let node = n.borrow();
+
+            final_order.push(node.label.clone());
+
+            for conn in &node.connections {
+                if let Some(rc_node) = conn.node.upgrade() {
+                    let conn_node = rc_node.borrow();
+
+                    if visited.insert(conn_node.label.clone()) {
+                        q.push_back(Rc::clone(&rc_node));
+                    }
+                }
+            }
+        }
+
+
+        return final_order;
+    }
+
+    pub fn dijkstra(&mut self, start_node_label: &str) -> HashMap<String, f64>{
+        let size = self.nodes.len();
+        let node_ref = self.node_by_label(start_node_label).expect("Node not found");
+        let mut distances: HashMap<String, f64> = HashMap::new();
+
+        for i in 0..size {
+            let lbl = self.nodes[i].borrow().label.clone();
+            distances.insert(lbl, f64::INFINITY);
+        }
+
+        distances.insert(node_ref.borrow().label.clone(), 0.);
+
+        let mut visited = vec![false; size];
+        let adj_matrix = self.generate_adjacency_matrix();
+
+        for _ in 0..size {
+            let mut min_distance = f64::INFINITY;
+            let mut u: Option<usize> = None;
+
+            for i in 0..size {
+                if !visited[i] && distances[&self.nodes[i].borrow().label] < min_distance {
+                    min_distance = distances[&self.nodes[i].borrow().label];
+                    u = Some(i);
+                }
+            }
+
+            if u == None {
+                break;
+            }
+            let u: usize = u.unwrap();
+            visited[u] = true;
+
+
+            for v in 0..size {
+                if adj_matrix[u][v] != 0. && !visited[v] {
+                    let alt = distances[&self.nodes[u].borrow().label] as f32 + adj_matrix[u][v];
+                    if alt < distances[&self.nodes[v].borrow().label] as f32{
+                        distances.insert(self.nodes[v].borrow().label.clone(), alt as f64);
+                    }
+                }
+            }
+        }
+
+        return distances;
+
+    }
+
+    pub fn output_svg(&mut self, override_positions: bool) -> String {
+        let mut svg: Svg = Svg::new();
+        let connections = self.get_connections();
+        let svg_string = svg.get_svg(&self.nodes, connections, Layout::Random, self.positions_set, override_positions);
+        return svg_string;
+    }
 }
 
 
@@ -427,7 +704,8 @@ impl _Graph {
     pub fn default() -> Self {
         return _Graph {
             nodes: Vec::new(),
-            normalized_positions: HashMap::new()
+            positions_set: false,
+            _current_index: 0
         };
     }
 
@@ -436,15 +714,15 @@ impl _Graph {
 
         adj_matrix_graph.nodes = create_nodes_from_labels(adj_matrix.len(), custom_labels);
         let node_hash = create_node_hashmap(&adj_matrix_graph.nodes, 0);
-        
+
         for i in 0..adj_matrix.len() {
             for j in 0..adj_matrix.len() {
-                let weight = adj_matrix[i][j]; 
+                let weight = adj_matrix[i][j];
 
                 if weight != 0. {
                     adj_matrix_graph.create_connection(
-                        node_hash.get(&i).expect("Node not found").clone(), 
-                        node_hash.get(&j).expect("Node not found").clone(), 
+                        node_hash.get(&i).expect("Node not found").clone(),
+                        node_hash.get(&j).expect("Node not found").clone(),
                         weight,
                         directed
                     );

@@ -11,7 +11,7 @@ fn create_simple_graph() -> _Graph {
     graph.add_node("node3".to_string());
     graph.add_node("node4".to_string());
 
-    
+
     graph.create_connection("node1".to_string(), "node2".to_string(), 2., Some(false));
     graph.create_connection("node3".to_string(), "node4".to_string(), 4., Some(true));
     graph.create_connection("node4".to_string(), "node1".to_string(), 5.5, Some(false));
@@ -179,7 +179,7 @@ fn test_get_centrality_degree() {
     assert_eq!(centralities["out_centrality"], 0.);
     assert_eq!(centralities["total_centrality"], 0.);
     assert_abs_diff_eq!(centralities["undirected_centrality"], 2./3., epsilon = 1e-10);
-    
+
     let centralities = grafo.get_centrality_degrees("node2");
     assert_abs_diff_eq!(centralities["in_centrality"], 1./3., epsilon = 1e-10);
     assert_eq!(centralities["out_centrality"], 0.);
@@ -287,4 +287,36 @@ fn test_degree_distribution() {
     assert_eq!(distribution["in_distribution"], expected_distribution["in_distribution"]);
     assert_eq!(distribution["out_distribution"], expected_distribution["out_distribution"]);
     assert_eq!(distribution["undirected_distribution"], expected_distribution["undirected_distribution"]);
+}
+
+#[test]
+fn test_compute_entropy() {
+    let mut grafo = create_simple_graph();
+
+    let entropy = grafo.compute_entropy();
+
+    assert_abs_diff_eq!(entropy["in_entropy"], 0.6931, epsilon = 1e-4);
+    assert_abs_diff_eq!(entropy["out_entropy"], 0.5623, epsilon = 1e-4);
+    assert_abs_diff_eq!(entropy["undirected_entropy"], 0.6931, epsilon = 1e-4);
+
+}
+
+#[test]
+fn test_get_max_possible_entropy() {
+    let mut grafo = create_simple_graph();
+    let max_entropy = grafo.get_max_possible_entropy();
+
+    assert_abs_diff_eq!(max_entropy, 1.0986, epsilon = 1e-4);
+
+}
+
+#[test]
+fn test_get_skewness() {
+    let mut grafo = create_simple_graph();
+    let skewness = grafo.get_skewness();
+
+    assert_abs_diff_eq!(skewness["in_skewness"], 0.6, epsilon = 1e-4);
+    assert_abs_diff_eq!(skewness["out_skewness"], 0.4, epsilon = 1e-4);
+    assert_abs_diff_eq!(skewness["undirected_skewness"], 0.8666, epsilon = 1e-4);
+
 }

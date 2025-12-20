@@ -12,7 +12,7 @@ fn make_conn(from: &str, to: &str, weight: f32, directed: bool) -> HashMap<Strin
 
 #[test]
 fn test_from_adjacency_matrix() {
-    
+
 
     let adj_matrix = vec![
         vec![0., 1.],

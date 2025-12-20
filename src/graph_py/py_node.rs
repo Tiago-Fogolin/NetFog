@@ -19,6 +19,9 @@ impl Node {
             inner: Rc::new(RefCell::new(_Node {
                 label,
                 connections: Vec::new(),
+                x: None,
+                y: None,
+                index: None
             })),
         }
     }

@@ -1,6 +1,7 @@
 pub mod graph_core;
 pub mod file_writer_core;
-
+pub mod svg_creation;
+pub mod layout;
 pub mod graph_py;
 
 pub use graph_core::node::_Node;

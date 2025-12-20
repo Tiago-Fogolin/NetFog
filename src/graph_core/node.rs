@@ -11,7 +11,10 @@ pub struct Connection {
 
 pub struct _Node {
     pub connections: Vec<Connection>,
-    pub label: String
+    pub label: String,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub index: Option<usize>
 }
 
 impl _Node {
