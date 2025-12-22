@@ -694,7 +694,7 @@ impl _Graph {
     pub fn output_svg(&mut self, override_positions: bool) -> String {
         let mut svg: Svg = Svg::new();
         let connections = self.get_connections();
-        let svg_string = svg.get_svg(&self.nodes, connections, Layout::Random, self.positions_set, override_positions);
+        let svg_string = svg.get_svg(&self.nodes, &connections, Layout::Random, self.positions_set, override_positions);
         return svg_string;
     }
 }
