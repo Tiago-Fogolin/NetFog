@@ -1,4 +1,4 @@
-use crate::Node;
+use crate::{HtmlWriter, Node, Writeable};
 use crate::graph_core::node::{self, _Node};
 use std::f64;
 use std::hash::Hash;
@@ -691,11 +691,17 @@ impl _Graph {
 
     }
 
-    pub fn output_svg(&mut self, override_positions: bool) -> String {
+    pub fn output_svg(&mut self, layout: Layout, override_positions: bool) -> String {
         let mut svg: Svg = Svg::new();
         let connections = self.get_connections();
-        let svg_string = svg.get_svg(&self.nodes, &connections, Layout::Random, self.positions_set, override_positions);
+        let svg_string = svg.get_svg(&self.nodes, &connections, layout, self.positions_set, override_positions);
         return svg_string;
+    }
+
+    pub fn output_html(&mut self, file_name: &str, layout: Layout, override_positions: bool) {
+        let svg_string = self.output_svg(layout, override_positions);
+        let html_writer = HtmlWriter{};
+        html_writer.write_file(file_name, &svg_string).expect("Error while creating the file");
     }
 }
 

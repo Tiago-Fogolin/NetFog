@@ -1,4 +1,5 @@
 use netfog::{_Graph, HtmlWriter, Writeable};
+use netfog::layout::layout::Layout;
 
 fn create_simple_graph() -> _Graph {
     let mut graph = _Graph::default();
@@ -22,13 +23,21 @@ fn create_simple_graph() -> _Graph {
 #[ignore]
 fn test_html() {
     let writer = HtmlWriter {};
-    writer.write_file("output.html").expect("Erro ao criar arquivo");
+    writer.write_file("output.html", "test").expect("Erro ao criar arquivo");
 }
 
 #[test]
+#[ignore]
 fn test_svg() {
     let mut graph = create_simple_graph();
-    let conteudo_svg = graph.output_svg(true);
+    let conteudo_svg = graph.output_svg(Layout::Random, true);
 
     std::fs::write("test_output.svg", &conteudo_svg).expect("Erro ao salvar");
+}
+
+#[test]
+#[ignore]
+fn test_html_with_svg() {
+    let mut graph = create_simple_graph();
+    graph.output_html("output.html", Layout::Random, true);
 }

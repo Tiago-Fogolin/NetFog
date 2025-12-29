@@ -112,14 +112,42 @@ impl Svg {
 
     }
 
+    fn get_marker_only_line(
+        &mut self,
+        element_pos: ElementPostion,
+        element_class: &String,
+        stroke_width: f64
+    ) -> Element {
+        let mut marker_only_line = Element::new("line".to_string());
+
+        let atributes: Vec<(String, AtributeValue)> = vec![
+          ("x1".to_string(), AtributeValue::Decimal(element_pos.x1)),
+          ("y1".to_string(), AtributeValue::Decimal(element_pos.y1)),
+          ("x2".to_string(), AtributeValue::Decimal(element_pos.x2)),
+          ("y2".to_string(), AtributeValue::Decimal(element_pos.y2)),
+          ("stroke".to_string(), AtributeValue::Text("none".to_string())),
+          ("stroke-width".to_string(), AtributeValue::Decimal(stroke_width)),
+          ("marker-end".to_string(), AtributeValue::Text("url(#marker)".to_string())),
+          ("class".to_string(), AtributeValue::Text(element_class.clone()))
+        ];
+
+        marker_only_line.atributes = atributes;
+
+        return marker_only_line;
+    }
+
     fn add_line(
         &mut self,
         element_pos: ElementPostion,
         from_index: usize,
-        to_index: usize
+        to_index: usize,
+        directed: bool
 
-    ) {
+    ) -> Option<Element> {
         let mut new_line = Element::new("line".to_string());
+        let mut marker_ony_element: Option<Element> = None;
+        let stroke_width: f64 = 1.;
+        let class_name = format!("{}line{}", from_index, to_index);
 
         let atributes: Vec<(String, AtributeValue)> = vec![
           ("x1".to_string(), AtributeValue::Decimal(element_pos.x1)),
@@ -127,13 +155,19 @@ impl Svg {
           ("x2".to_string(), AtributeValue::Decimal(element_pos.x2)),
           ("y2".to_string(), AtributeValue::Decimal(element_pos.y2)),
           ("stroke".to_string(), AtributeValue::Text("black".to_string())),
-          ("stroke_width".to_string(), AtributeValue::Decimal(1.)),
-          ("class".to_string(), AtributeValue::Text(format!("{}line{}", from_index, to_index)))
+          ("stroke-width".to_string(), AtributeValue::Decimal(stroke_width)),
+          ("class".to_string(), AtributeValue::Text(class_name.clone()))
         ];
 
         new_line.atributes = atributes;
 
         self.elements.push(new_line);
+
+        if directed {
+            marker_ony_element = Some(self.get_marker_only_line(element_pos, &class_name, stroke_width));
+        }
+
+        return marker_ony_element;
     }
 
     fn add_circle(
@@ -195,14 +229,18 @@ impl Svg {
         connections: &ConnectionsList,
         node_map: HashMap<String, Rc<RefCell<_Node>>>
     ) {
+        let mut marker_only_lines: Vec<Element> = Vec::new();
+
         for conn in connections {
             let mut from_name = None;
             let mut to_name = None;
+            let mut directed = false;
 
             for property in conn.values() {
                 match property {
                     ConnectionProperty::From(name) => from_name = Some(name),
                     ConnectionProperty::To(name) => to_name = Some(name),
+                    ConnectionProperty::Directed(bool) => directed = *bool,
                     _ => {}
                 }
             }
@@ -216,7 +254,16 @@ impl Svg {
                 y2: to.y.unwrap()
             };
 
-            self.add_line(line_pos, from.index.unwrap(), to.index.unwrap());
+            let marker_line = self.add_line(line_pos, from.index.unwrap(), to.index.unwrap(), directed);
+            if !marker_line.is_none() {
+                marker_only_lines.push(marker_line.unwrap());
+            }
+        }
+
+        if !marker_only_lines.is_empty() {
+            for el in marker_only_lines {
+                self.elements.push(el);
+            }
         }
 
     }
