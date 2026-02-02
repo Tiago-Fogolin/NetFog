@@ -32,8 +32,8 @@ from netfog import Graph, Node
 g = Graph()
 
 # Add nodes
-n1 = Node("A")
-n2 = Node("B")
+g.add_node("A")
+g.add_node("B")
 
 # Add a connection (edge or arc)
 # Here we use the label of the nodes for easier manipulation
