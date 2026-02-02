@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "netfog"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python Graph Library"
 authors = [{ name = "Tiago Fogolin Ragassi", email = "ticofogolin@gmail.com" }]
 license = { text = "MIT" }

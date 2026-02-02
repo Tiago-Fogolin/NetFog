@@ -1,3 +1,0 @@
-file_writer_core
-graph_core
-graph_py
