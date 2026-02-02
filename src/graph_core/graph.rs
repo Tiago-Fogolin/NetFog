@@ -1,5 +1,7 @@
+use crate::layout::style::GraphStyle;
 use crate::{HtmlWriter, Node, Writeable};
 use crate::graph_core::node::{self, _Node};
+use crate::file_writer_core::file_writer::{write_json_file, write_net_file};
 use std::f64;
 use std::hash::Hash;
 use std::{collections::HashMap, collections::HashSet, collections::VecDeque};
@@ -7,6 +9,7 @@ use std::cell::RefCell;
 use std::rc::{Rc};
 use crate::svg_creation::svg_creation::Svg;
 use crate::layout::layout::Layout;
+use crate::file_reader_core::file_reader::{read_json_file, read_net_file};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionProperty  {
@@ -94,6 +97,33 @@ impl _Graph {
         };
 
         self._current_index += 1;
+
+        self.nodes.push(Rc::new(RefCell::new(new_node)));
+    }
+
+
+    pub fn add_node_with_pos(&mut self, label: String, x:f64, y:f64) {
+
+        let exists = self.nodes.iter().any(|node_rc| {
+            node_rc.borrow().label == label
+        });
+
+        if exists {
+            println!("Node with label '{}' already exists!", label);
+            return;
+        }
+
+        let new_node = _Node{
+            label: label,
+            connections: Vec::new(),
+            index: Some(self._current_index),
+            x: Some(x),
+            y: Some(y),
+
+        };
+
+        self._current_index += 1;
+        self.positions_set = true;
 
         self.nodes.push(Rc::new(RefCell::new(new_node)));
     }
@@ -691,17 +721,25 @@ impl _Graph {
 
     }
 
-    pub fn output_svg(&mut self, layout: Layout, override_positions: bool) -> String {
+    pub fn output_svg(&mut self, layout: Layout, override_positions: bool, style: GraphStyle) -> String {
         let mut svg: Svg = Svg::new();
         let connections = self.get_connections();
-        let svg_string = svg.get_svg(&self.nodes, &connections, layout, self.positions_set, override_positions);
+        let svg_string = svg.get_svg(&self.nodes, &connections, layout, self.positions_set, override_positions, style);
         return svg_string;
     }
 
-    pub fn output_html(&mut self, file_name: &str, layout: Layout, override_positions: bool) {
-        let svg_string = self.output_svg(layout, override_positions);
+    pub fn output_html(&mut self, file_name: &str, layout: Layout, override_positions: bool, style: GraphStyle) {
+        let svg_string = self.output_svg(layout, override_positions, style);
         let html_writer = HtmlWriter{};
         html_writer.write_file(file_name, &svg_string).expect("Error while creating the file");
+    }
+
+    pub fn output_net_file(&mut self, path: &str) {
+        write_net_file(path, self.nodes.clone()).expect("Error while creating the file");
+    }
+
+    pub fn output_json_file(&mut self, path: &str) {
+        write_json_file(path, self.nodes.clone()).expect("Error while creating the file");
     }
 }
 
@@ -713,6 +751,16 @@ impl _Graph {
             positions_set: false,
             _current_index: 0
         };
+    }
+
+    pub fn from_net_file(path: &str) -> Self {
+        let new_graph = read_net_file(path).expect("Failed to read .net file");
+        return new_graph;
+    }
+
+    pub fn from_json_file(path: &str) -> Self {
+        let new_graph = read_json_file(path).expect("Failed to read .json file");
+        return new_graph;
     }
 
     pub fn from_adjacency_matrix(adj_matrix: Vec<Vec<f32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>) -> Self {

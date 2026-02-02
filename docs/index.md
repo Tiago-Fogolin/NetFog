@@ -1,8 +1,10 @@
 # NetFog
 
-⚠️ Warning: This library is still under development and has not yet been published on PyPI or CRAN.  
-It is expected to be published on PyPI, at the very least, by the end of 2025.
-
+> [!CAUTION]
+> **Work in Progress:** This library is in its early stages of development (Alpha).
+> 
+> * **Unstable API:** Functions and class structures may change significantly between versions.
+> * **Bugs Expected:** You might encounter unexpected behavior. Please feel free to open an issue!
 ---
 
 ## Overview
@@ -34,12 +36,12 @@ This library is designed to be **lightweight, fast, and easy to use**.
 
 ## 3. Algorithms
 
-- **Python**
+- [*Python*](python/algorithms.md)
 
 
-## 4. Visualization
+## 4. Visualization and Export
 
-- **Python**
+- [*Python*](python/visualization.md)
 
 
 ## 5. Simulations

@@ -38,6 +38,24 @@ Returns the density of the graph.
 
 - `get_average_degree() -> float`  
   Returns the average degree of the graph.
+
+- `get_centrality_degree(node_label: str) -> dict`  
+  Returns the normalized degree centrality for a given node. The values are calculated by dividing each degree metric by $(N - 1)$, where $N$ is the total number of nodes.
+
+- `get_node_strength(node_label: str) -> dict`  
+  Returns the sum of the weights of all edges connected to the given node, categorized by direction (incoming, outgoing, undirected, and total).
+
+- `get_degree_distribution() -> dict`  
+  Returns the probability distribution of degrees in the graph. It maps each existing degree value to its relative frequency for in, out, and undirected degrees.
+
+- `compute_entropy() -> dict`  
+   Returns the Shannon entropy of the graph's degree distributions (in, out, and undirected). It measures the diversity and heterogeneity of the node connections.
+
+- `get_max_possible_entropy() -> float`  
+  Returns the theoretical maximum entropy for the current number of nodes, calculated as $ln(N - 1)$.
+
+- `get_skewness() -> dict`  
+   Returns skewness metrics based on node ranking. It indicates the concentration of connections, helping to identify if the graph follows a power-law-like distribution.
 ---
 
 ## Python Examples

@@ -23,6 +23,27 @@ Represents a graph. You can add nodes, create connections, inspect the graph, an
 
 - `from_adjacency_matrix(adj_matrix: list, directed: bool, custom_labels: list | None = None) -> Graph`  
   Creates a graph from an adjacency matrix. Optional custom labels can be provided.
+
+- `from_net_file(file_path: str) -> Graph`  
+  Creates a graph from a .net (Pajek) file. This method supports node labels, spatial coordinates ($x$, $y$), and weighted connections defined in the file.
+
+- `from_json_file(file_path: str) -> Graph`  
+  Creates a graph from a JSON file. The schema supports node coordinates and distinguishes between undirected connections (edges) and directed ones (arcs).
+  JSON structure example:
+  ```json
+  {
+    "nodes": [
+      {"label": "1", "x": 10.5, "y": 20.0},
+      {"label": "2", "x": 15.0, "y": 25.0}
+    ],
+    "edges": [
+      {"source": "1", "target": "2", "weight": 1.0}
+    ],
+    "arcs": [
+      {"source": "2", "target": "3", "weight": 0.5}
+    ]
+  }
+  ```
 ---
 
 ## Python Examples

@@ -1,14 +1,9 @@
-use pyo3::exceptions::PyAttributeError;
-use pyo3::ffi::Py_Finalize;
-
 use crate::_Node;
 use crate::graph_core::graph::{ConnectionsList, ConnectionProperty};
-use crate::graph_core::node;
 use crate::layout::layout::{Layout, get_layout_function};
+use crate::layout::style::{GraphStyle, get_line_width};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::hash::Hash;
-use std::ops::Add;
 use std::rc::Rc;
 use std::fmt::{self, format};
 
@@ -83,11 +78,11 @@ impl Svg {
             elements: Vec::new()
         };
     }
-    fn add_arrow_def(&mut self) {
+    fn add_arrow_def(&mut self, marker_svg: String, marker_color: String, marker_width: i32, marker_height: i32) {
         let mut arrow_head = Element::new("path".to_string());
         let arrow_head_atributes = vec![
-            ("d".to_string(), AtributeValue::Text("M0,0 L0,6 L9,3 z".to_string())),
-            ("fill".to_string(), AtributeValue::Text("black".to_string()))
+            ("d".to_string(), AtributeValue::Text(marker_svg)),
+            ("fill".to_string(), AtributeValue::Text(marker_color))
         ];
 
         arrow_head.atributes = arrow_head_atributes;
@@ -95,8 +90,8 @@ impl Svg {
         let mut arrow_marker = Element::new("marker".to_string());
         let arrow_marker_atributes = vec![
             ("id".to_string(), AtributeValue::Text("marker".to_string())),
-            ("markerWidth".to_string(), AtributeValue::Text("30".to_string())),
-            ("markerHeight".to_string(), AtributeValue::Text("30".to_string())),
+            ("markerWidth".to_string(), AtributeValue::Text(marker_width.to_string())),
+            ("markerHeight".to_string(), AtributeValue::Text(marker_height.to_string())),
             ("refX".to_string(), AtributeValue::Text("29".to_string())),
             ("refY".to_string(), AtributeValue::Text("3".to_string())),
             ("orient".to_string(), AtributeValue::Text("auto".to_string())),
@@ -141,7 +136,9 @@ impl Svg {
         element_pos: ElementPostion,
         from_index: usize,
         to_index: usize,
-        directed: bool
+        directed: bool,
+        line_color: &str,
+        line_width: f64
 
     ) -> Option<Element> {
         let mut new_line = Element::new("line".to_string());
@@ -154,8 +151,8 @@ impl Svg {
           ("y1".to_string(), AtributeValue::Decimal(element_pos.y1)),
           ("x2".to_string(), AtributeValue::Decimal(element_pos.x2)),
           ("y2".to_string(), AtributeValue::Decimal(element_pos.y2)),
-          ("stroke".to_string(), AtributeValue::Text("black".to_string())),
-          ("stroke-width".to_string(), AtributeValue::Decimal(stroke_width)),
+          ("stroke".to_string(), AtributeValue::Text(line_color.to_string())),
+          ("stroke-width".to_string(), AtributeValue::Decimal(line_width)),
           ("class".to_string(), AtributeValue::Text(class_name.clone()))
         ];
 
@@ -172,16 +169,19 @@ impl Svg {
 
     fn add_circle(
         &mut self,
-        node: &_Node
+        node: &_Node,
+        node_color: &str,
+        node_border: &str,
+        node_radius: i32
     ) {
         let mut new_circle = Element::new("circle".to_string());
 
         let atributes: Vec<(String, AtributeValue)> = vec![
             ("cx".to_string(), AtributeValue::Decimal(node.x.unwrap())),
             ("cy".to_string(), AtributeValue::Decimal(node.y.unwrap())),
-            ("stroke".to_string(), AtributeValue::Text("blue".to_string())),
-            ("fill".to_string(), AtributeValue::Text("blue".to_string())),
-            ("r".to_string(), AtributeValue::Integer(20)),
+            ("stroke".to_string(), AtributeValue::Text(node_border.to_string())),
+            ("fill".to_string(), AtributeValue::Text(node_color.to_string())),
+            ("r".to_string(), AtributeValue::Integer(node_radius)),
             ("class".to_string(), AtributeValue::Text(format!("node{}",node.index.unwrap())))
         ];
 
@@ -215,11 +215,14 @@ impl Svg {
 
     fn draw_nodes(
         &mut self,
-        nodes: &Vec<Rc<RefCell<_Node>>>
+        nodes: &Vec<Rc<RefCell<_Node>>>,
+        node_color: &str,
+        node_border: &str,
+        node_radius: i32
     ) {
         for n in nodes {
             let node = n.borrow();
-            self.add_circle(&node);
+            self.add_circle(&node, node_color, node_border, node_radius);
             self.add_label(&node);
         }
     }
@@ -227,7 +230,13 @@ impl Svg {
     fn draw_lines(
         &mut self,
         connections: &ConnectionsList,
-        node_map: HashMap<String, Rc<RefCell<_Node>>>
+        node_map: HashMap<String, Rc<RefCell<_Node>>>,
+        line_color: &str,
+        min_weight: f32,
+        max_weight: f32,
+        min_width: i32,
+        max_width: i32,
+        dynamic_lines: bool
     ) {
         let mut marker_only_lines: Vec<Element> = Vec::new();
 
@@ -235,12 +244,14 @@ impl Svg {
             let mut from_name = None;
             let mut to_name = None;
             let mut directed = false;
+            let mut weight = 0.;
 
             for property in conn.values() {
                 match property {
                     ConnectionProperty::From(name) => from_name = Some(name),
                     ConnectionProperty::To(name) => to_name = Some(name),
                     ConnectionProperty::Directed(bool) => directed = *bool,
+                    ConnectionProperty::Weight(w) => weight = *w,
                     _ => {}
                 }
             }
@@ -253,8 +264,12 @@ impl Svg {
                 x2: to.x.unwrap(),
                 y2: to.y.unwrap()
             };
+            let mut line_width = 1.;
+            if dynamic_lines {
+                line_width = get_line_width(weight, min_weight, max_weight, min_width as f32, max_width as f32);
+            }
 
-            let marker_line = self.add_line(line_pos, from.index.unwrap(), to.index.unwrap(), directed);
+            let marker_line = self.add_line(line_pos, from.index.unwrap(), to.index.unwrap(), directed, line_color, line_width);
             if !marker_line.is_none() {
                 marker_only_lines.push(marker_line.unwrap());
             }
@@ -275,16 +290,25 @@ impl Svg {
         layout: Layout,
         positions_set: bool,
         override_positions: bool,
-        node_map: HashMap<String, Rc<RefCell<_Node>>>
+        node_map: HashMap<String, Rc<RefCell<_Node>>>,
+        style: GraphStyle
     ) {
         if !positions_set || override_positions {
             let layout_func = get_layout_function(layout);
             layout_func(&nodes);
         }
 
-        self.add_arrow_def();
-        self.draw_lines(connections, node_map);
-        self.draw_nodes(nodes);
+        let min_weight = 1.;
+        let max_weight = connections.iter()
+            .filter_map(|conn| conn.get("Weight"))
+            .filter_map(|prop| if let ConnectionProperty::Weight(w) = prop { Some(w) } else { None })
+            .max_by(|a, b| a.total_cmp(b))
+            .copied()
+            .unwrap_or(1.0);
+
+        self.add_arrow_def(style.marker_svg, style.marker_fill, style.marker_width, style.marker_height);
+        self.draw_lines(connections, node_map, &style.line_color, min_weight, max_weight, style.line_min_width, style.line_max_width, style.dynamic_line_size);
+        self.draw_nodes(nodes, &style.node_color, &style.node_border, style.node_radius);
 
     }
 
@@ -343,14 +367,15 @@ impl Svg {
         connections: &ConnectionsList,
         layout: Layout,
         positions_set: bool,
-        override_positions: bool
+        override_positions: bool,
+        style: GraphStyle
     ) -> String {
         // TODO -> Remove this workaround
         // For now, we store the x,y by label
         // But in future this will be changed, so we get a better performance
         let node_map = create_node_hashmap(nodes);
 
-        self.draw_graph(nodes, connections, layout, positions_set, override_positions, node_map);
+        self.draw_graph(nodes, connections, layout, positions_set, override_positions, node_map, style);
 
         let svg = self.write_svg();
 

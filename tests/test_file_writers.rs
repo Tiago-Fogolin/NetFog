@@ -1,5 +1,8 @@
+use netfog::file_reader_core::file_reader::read_json_file;
 use netfog::{_Graph, HtmlWriter, Writeable};
 use netfog::layout::layout::Layout;
+use netfog::{file_reader_core::file_reader::read_net_file, *};
+use netfog::layout::style::GraphStyle;
 
 fn create_simple_graph() -> _Graph {
     let mut graph = _Graph::default();
@@ -30,7 +33,8 @@ fn test_html() {
 #[ignore]
 fn test_svg() {
     let mut graph = create_simple_graph();
-    let conteudo_svg = graph.output_svg(Layout::Random, true);
+    let style = GraphStyle::default();
+    let conteudo_svg = graph.output_svg(Layout::Random, true, style);
 
     std::fs::write("test_output.svg", &conteudo_svg).expect("Erro ao salvar");
 }
@@ -39,5 +43,28 @@ fn test_svg() {
 #[ignore]
 fn test_html_with_svg() {
     let mut graph = create_simple_graph();
-    graph.output_html("output.html", Layout::Random, true);
+    let mut style = GraphStyle::default();
+    style.dynamic_line_size = false;
+    graph.output_html("output.html", Layout::Spring, true, style);
+}
+
+#[test]
+#[ignore]
+fn test_output_net_file() {
+
+    let style = GraphStyle::default();
+    let mut graph = read_net_file("data.net").expect("Falha ao ler o arquivo .net");
+    graph.output_net_file("output.net");
+    let mut graph2 = read_net_file("output.net").expect("Falha ao ler o arquivo .net");
+    graph2.output_html("output2.html", Layout::Random, false,style);
+}
+
+#[test]
+#[ignore]
+fn test_output_json_file() {
+    let style = GraphStyle::default();
+    let mut graph = read_json_file("arquivo_json.json").expect("Falha ao ler o arquivo .json");
+    graph.output_json_file("output.json");
+    let mut graph2 = read_json_file("output.json").expect("Falha ao ler o arquivo .json");
+    graph2.output_html("output2.html", Layout::Random, false,style);
 }
