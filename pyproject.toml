@@ -1,19 +1,22 @@
 [build-system]
-requires = ["setuptools>=42", "wheel", "setuptools-rust"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "netfog"
 version = "0.1.0"
-description = "Sua descrição do projeto"
-authors = [{ name = "Seu Nome", email = "seu_email@example.com" }]
-license = "MIT"
+description = "Python Graph Library"
+authors = [{ name = "Tiago Fogolin Ragassi", email = "ticofogolin@gmail.com" }]
+license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Information Analysis",
 ]
 
-[tool.setuptools-rust]
-bindings = "pyo3"
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "netfog.netfog"
