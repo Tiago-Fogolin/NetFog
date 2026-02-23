@@ -4,6 +4,7 @@ pub mod file_reader_core;
 pub mod svg_creation;
 pub mod layout;
 pub mod graph_py;
+pub mod external_apis;
 
 pub use graph_core::node::_Node;
 pub use file_writer_core::file_writer::{HtmlWriter, Writeable};

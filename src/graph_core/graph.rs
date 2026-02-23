@@ -10,6 +10,9 @@ use std::rc::{Rc};
 use crate::svg_creation::svg_creation::Svg;
 use crate::layout::layout::Layout;
 use crate::file_reader_core::file_reader::{read_json_file, read_net_file};
+use crate::external_apis::core::{ApiGraphType, ApiSource};
+use crate::external_apis::openalex::dispatch_openalex_graph_creation;
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionProperty  {
@@ -786,5 +789,13 @@ impl _Graph {
         }
 
         return adj_matrix_graph;
+    }
+
+    pub fn from_api(api: ApiSource, search: &str, limit: usize, graph_type: ApiGraphType, api_key: &str) -> Self {
+        let graph = match api {
+            ApiSource::OpenAlex => dispatch_openalex_graph_creation(search, limit, graph_type, api_key)
+        };
+
+        return graph;
     }
 }

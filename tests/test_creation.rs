@@ -1,5 +1,8 @@
 use netfog::*;
 use std::collections::HashMap;
+use crate::external_apis::core::{ApiSource, ApiGraphType};
+use netfog::layout::style::GraphStyle;
+use netfog::layout::layout::Layout;
 
 fn make_conn(from: &str, to: &str, weight: f32, directed: bool) -> HashMap<String, ConnectionProperty> {
     let mut conn = HashMap::new();
@@ -8,6 +11,14 @@ fn make_conn(from: &str, to: &str, weight: f32, directed: bool) -> HashMap<Strin
     conn.insert("weight".to_string(), ConnectionProperty::Weight(weight));
     conn.insert("directed".to_string(), ConnectionProperty::Directed(directed));
     conn
+}
+
+#[test]
+#[ignore]
+fn test_from_api() {
+    let style = GraphStyle::default();
+    let mut g = _Graph::from_api(ApiSource::OpenAlex, "TEST", 5, ApiGraphType::Cocitation, "YOUR_API_KEY");
+    g.output_html("teste_open_alex.html", Layout::Random, true, style);
 }
 
 #[test]
