@@ -4,6 +4,7 @@ pub mod file_reader_core;
 pub mod svg_creation;
 pub mod layout;
 pub mod graph_py;
+pub mod external_apis;
 
 pub use graph_core::node::_Node;
 pub use file_writer_core::file_writer::{HtmlWriter, Writeable};
@@ -19,6 +20,7 @@ use pyo3_stub_gen::*;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
 
+use crate::external_apis::core::OpenAlexGraphType;
 
 #[pymodule]
 fn netfog(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -26,6 +28,7 @@ fn netfog(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Graph>()?;
     m.add_class::<Layout>()?;
     m.add_class::<GraphStyle>()?;
+    m.add_class::<OpenAlexGraphType>()?;
     Ok(())
 }
 

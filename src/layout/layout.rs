@@ -41,7 +41,8 @@ type LayoutFn = fn(&Vec<Rc<RefCell<_Node>>>);
 pub enum Layout {
     Random,
     Circular,
-    Spring
+    Spring,
+    ForceAtlas2
 }
 
 fn generate_random_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
@@ -185,12 +186,160 @@ pub fn generate_force_layout_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
     }
 }
 
+pub fn generate_force_atlas_2_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
+    generate_random_positions(nodes);
+
+    let mut edges = Vec::new();
+    let mut degrees: HashMap<String, f64> = HashMap::new();
+
+    for n in nodes {
+        let node_ref = n.borrow();
+        let label_a = &node_ref.label;
+
+        degrees.entry(label_a.clone()).or_insert(0.0);
+
+        for conn in &node_ref.connections {
+            if let Some(target_rc) = conn.node.upgrade() {
+                let target_ref = target_rc.borrow();
+                let label_b = &target_ref.label;
+
+                if label_a < label_b {
+                    edges.push((label_a.clone(), label_b.clone()));
+                } else {
+                    edges.push((label_b.clone(), label_a.clone()));
+                }
+            }
+        }
+    }
+
+    edges.sort();
+    edges.dedup();
+
+    for (u, v) in &edges {
+        *degrees.entry(u.clone()).or_insert(0.0) += 1.0;
+        *degrees.entry(v.clone()).or_insert(0.0) += 1.0;
+    }
+
+    let iterations = 100;
+    let kr = 50.0;
+    let kg = 1.0;
+    let center_x = SCREEN_CENTER_X;
+    let center_y = SCREEN_CENTER_Y;
+    let mut temperature = MAX_WIDTH / 10.0;
+
+    for _ in 0..iterations {
+        let mut disp: HashMap<String, (f64, f64)> = nodes
+            .iter()
+            .map(|n| (n.borrow().label.clone(), (0.0, 0.0)))
+            .collect();
+
+        let pos_map: HashMap<String, (f64, f64)> = nodes
+            .iter()
+            .map(|n| {
+                let r = n.borrow();
+                (r.label.clone(), (r.x.unwrap_or(0.0), r.y.unwrap_or(0.0)))
+            })
+            .collect();
+
+        let node_labels: Vec<String> = pos_map.keys().cloned().collect();
+
+        for i in 0..node_labels.len() {
+            for j in (i + 1)..node_labels.len() {
+                let v_label = &node_labels[i];
+                let u_label = &node_labels[j];
+
+                if let (Some(pos_v), Some(pos_u)) = (pos_map.get(v_label), pos_map.get(u_label)) {
+                    let dx = pos_v.0 - pos_u.0;
+                    let dy = pos_v.1 - pos_u.1;
+                    let dist = dx.hypot(dy) + 0.01;
+
+                    let mass_v = degrees.get(v_label).unwrap_or(&0.0) + 1.0;
+                    let mass_u = degrees.get(u_label).unwrap_or(&0.0) + 1.0;
+
+                    let force = kr * (mass_v * mass_u) / dist;
+
+                    let push_x = (dx / dist) * force;
+                    let push_y = (dy / dist) * force;
+
+                    if let Some(d) = disp.get_mut(v_label) {
+                        d.0 += push_x;
+                        d.1 += push_y;
+                    }
+                    if let Some(d) = disp.get_mut(u_label) {
+                        d.0 -= push_x;
+                        d.1 -= push_y;
+                    }
+                }
+            }
+        }
+
+        for (v_label, u_label) in &edges {
+            if let (Some(pos_v), Some(pos_u)) = (pos_map.get(v_label), pos_map.get(u_label)) {
+                let dx = pos_v.0 - pos_u.0;
+                let dy = pos_v.1 - pos_u.1;
+                let dist = dx.hypot(dy) + 0.01;
+
+                let force = dist;
+
+                let pull_x = (dx / dist) * force;
+                let pull_y = (dy / dist) * force;
+
+                if let Some(d) = disp.get_mut(v_label) {
+                    d.0 -= pull_x;
+                    d.1 -= pull_y;
+                }
+                if let Some(d) = disp.get_mut(u_label) {
+                    d.0 += pull_x;
+                    d.1 += pull_y;
+                }
+            }
+        }
+
+        for (label, pos) in &pos_map {
+            let dx = center_x - pos.0;
+            let dy = center_y - pos.1;
+            let dist = dx.hypot(dy) + 0.01;
+
+            let mass = degrees.get(label).unwrap_or(&0.0) + 1.0;
+
+            let force = kg * mass;
+
+            let pull_x = (dx / dist) * force;
+            let pull_y = (dy / dist) * force;
+
+            if let Some(d) = disp.get_mut(label) {
+                d.0 += pull_x;
+                d.1 += pull_y;
+            }
+        }
+
+        for n_rc in nodes {
+            let mut n = n_rc.borrow_mut();
+            if let Some(d) = disp.get(&n.label) {
+                let disp_len = d.0.hypot(d.1);
+                if disp_len > 0.0 {
+                    let limited_x = (d.0 / disp_len) * disp_len.min(temperature);
+                    let limited_y = (d.1 / disp_len) * disp_len.min(temperature);
+
+                    let new_x = n.x.unwrap_or(0.0) + limited_x;
+                    let new_y = n.y.unwrap_or(0.0) + limited_y;
+
+                    n.x = Some(new_x.clamp(MIN_WIDTH, MAX_WIDTH));
+                    n.y = Some(new_y.clamp(MIN_HEIGHT, MAX_HEIGHT));
+                }
+            }
+        }
+
+        temperature *= 0.95;
+    }
+}
 
 pub fn get_layout_function(layout: Layout) -> LayoutFn {
     match layout {
         Layout::Random => generate_random_positions,
         Layout::Circular => generate_circular_positions,
-        Layout::Spring => generate_force_layout_positions
+        Layout::Spring => generate_force_layout_positions,
+        Layout::ForceAtlas2 => generate_force_atlas_2_positions
     }
 
 }
