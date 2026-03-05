@@ -1,6 +1,6 @@
 use netfog::*;
 use std::collections::HashMap;
-use crate::external_apis::core::{ApiSource, ApiGraphType};
+use crate::external_apis::core::{OpenAlexGraphType};
 use netfog::layout::style::GraphStyle;
 use netfog::layout::layout::Layout;
 
@@ -17,8 +17,8 @@ fn make_conn(from: &str, to: &str, weight: f32, directed: bool) -> HashMap<Strin
 #[ignore]
 fn test_from_api() {
     let style = GraphStyle::default();
-    let mut g = _Graph::from_api(ApiSource::OpenAlex, "TEST", 5, ApiGraphType::Cocitation, "YOUR_API_KEY");
-    g.output_html("teste_open_alex.html", Layout::Random, true, style);
+    let mut g = _Graph::from_openalex(None,None,None, Some("TEST"), None, OpenAlexGraphType::Coauthorship, "YOUR_API_KEY", Some(100), Some(1.));
+    g.output_html("teste_open_alex.html", Layout::Spring, true, style);
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn test_from_adjacency_matrix() {
         make_conn("two", "one", 1., false),
     ];
 
-    assert_eq!(connections, graph.get_connections());
+    assert_eq!(connections, graph.get_connections(None, None, false));
 
     // Segundo grafo
     let adj_matrix2 = vec![
@@ -69,7 +69,7 @@ fn test_from_adjacency_matrix() {
         make_conn("three", "two", 2., true),
     ];
 
-    assert_eq!(connections2, graph2.get_connections());
+    assert_eq!(connections2, graph2.get_connections(None, None, false));
 }
 
 #[test]

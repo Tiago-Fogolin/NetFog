@@ -2,10 +2,11 @@
 use pyo3::prelude::*;
 use std::cell::RefCell;
 use std::rc::{Rc};
-use crate::graph_core::graph::{_Graph};
+use crate::graph_core::graph::{_Graph,ConnectionProperty};
 use crate::graph_py::py_node::Node;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
+use crate::external_apis::core::OpenAlexGraphType;
 use pyo3::types::PyDict;
 use pyo3_stub_gen::derive::gen_stub_pyclass;
 
@@ -44,29 +45,28 @@ impl Graph {
         return Py::new(py, node);
     }
 
-    fn get_connections(&self, py: Python<'_>) ->  PyResult<Vec<Py<PyDict>>> {
-        let nodes_snapshot: Vec<_> = self.inner.borrow().nodes.iter().cloned().collect();
-        let mut all_connections = Vec::new();
+    #[pyo3(signature = (from_name="from", to_name="to", use_id=false))]
+    fn get_connections(&self, from_name: Option<&str>, to_name:Option<&str>, use_id: bool, py: Python<'_>) ->  PyResult<Vec<Py<PyDict>>> {
+         let connections_snapshot = self.inner.borrow_mut().get_connections(from_name, to_name, use_id);
 
-        for rc_node in nodes_snapshot {
-            let node = rc_node.borrow();
-            for conn in node.connections.iter() {
-                let dict = PyDict::new(py);
+        let mut py_connections: Vec<Py<PyDict>> = Vec::new();
 
-                dict.set_item("from", node.label.clone())?;
-                let to_label = match conn.node.upgrade() {
-                    Some(to_rc) => to_rc.borrow().label.clone(),
-                    None => "[Removed]".to_string(),
-                };
-                dict.set_item("to", to_label)?;
-                dict.set_item("weight", conn.weight)?;
-                dict.set_item("directed", conn.directed)?;
+        for rust_map in connections_snapshot {
+            let py_dict = PyDict::new(py);
 
-                all_connections.push(dict.into());
+            for (key, value) in rust_map {
+                match value {
+                    ConnectionProperty::From(s) => py_dict.set_item(key, s)?,
+                    ConnectionProperty::To(s) => py_dict.set_item(key, s)?,
+                    ConnectionProperty::Weight(w) => py_dict.set_item(key, w)?,
+                    ConnectionProperty::Directed(d) => py_dict.set_item(key, d)?,
+                }
             }
+
+            py_connections.push(py_dict.into());
         }
 
-        return Ok(all_connections);
+        Ok(py_connections)
     }
 
     fn generate_adjacency_matrix(&self) -> PyResult<Vec<Vec<f32>>> {
@@ -257,6 +257,11 @@ impl Graph {
             .collect()
     }
 
+    #[getter]
+    fn build_time_ms(&self) -> Option<f64> {
+        self.inner.borrow().build_time_ms
+    }
+
     #[staticmethod]
     #[pyo3(signature = (adj_matrix, directed=false, custom_labels=None))]
     fn from_adjacency_matrix(adj_matrix: Vec<Vec<f32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>) -> Graph {
@@ -278,6 +283,37 @@ impl Graph {
     fn from_json_file(file_path: &str) -> Graph {
         let graph = _Graph::from_json_file(file_path);
         return Graph {
+            inner: Rc::new(RefCell::new(graph)),
+        }
+    }
+
+    #[staticmethod]
+    #[pyo3(signature = (api_key, graph_type, search=None, author=None, author_id=None, author_orcid=None, keyword=None, limit=None, min_weight=None))]
+    fn from_openalex(
+        api_key: &str,
+        graph_type: OpenAlexGraphType,
+        search: Option<&str>,
+        author: Option<&str>,
+        author_id: Option<&str>,
+        author_orcid: Option<&str>,
+        keyword: Option<&str>,
+        limit: Option<usize>,
+        min_weight: Option<f32>,
+    ) -> Graph {
+
+        let graph = _Graph::from_openalex(
+            search,
+            author,
+            author_id,
+            author_orcid,
+            keyword,
+            graph_type,
+            api_key,
+            limit,
+            min_weight
+        );
+
+        Graph {
             inner: Rc::new(RefCell::new(graph)),
         }
     }

@@ -20,6 +20,7 @@ use pyo3_stub_gen::*;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
 
+use crate::external_apis::core::OpenAlexGraphType;
 
 #[pymodule]
 fn netfog(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -27,6 +28,7 @@ fn netfog(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Graph>()?;
     m.add_class::<Layout>()?;
     m.add_class::<GraphStyle>()?;
+    m.add_class::<OpenAlexGraphType>()?;
     Ok(())
 }
 

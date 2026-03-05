@@ -4,13 +4,14 @@ use crate::graph_core::node::{self, _Node};
 use crate::file_writer_core::file_writer::{write_json_file, write_net_file};
 use std::f64;
 use std::hash::Hash;
+use std::time::Instant;
 use std::{collections::HashMap, collections::HashSet, collections::VecDeque};
 use std::cell::RefCell;
 use std::rc::{Rc};
 use crate::svg_creation::svg_creation::Svg;
 use crate::layout::layout::Layout;
 use crate::file_reader_core::file_reader::{read_json_file, read_net_file};
-use crate::external_apis::core::{ApiGraphType, ApiSource};
+use crate::external_apis::core::{OpenAlexGraphType};
 use crate::external_apis::openalex::dispatch_openalex_graph_creation;
 
 
@@ -29,19 +30,22 @@ pub type ConnectionsList = Vec<ConnectionData>;
 pub struct _Graph {
     pub nodes: Vec<Rc<RefCell<_Node>>>,
     pub positions_set: bool,
-    _current_index: usize
+    pub build_time_ms: Option<f64>, // used only for 'factory methods' (Example: from_json_file)
+    _current_index: usize,
+    _node_label_hack: HashMap<String, Rc<RefCell<_Node>>>, // will be removed later, just a hack for optimization for now
 }
 
 
-fn create_nodes_from_labels(size: usize, labels: Option<Vec<String>>) -> Vec<Rc<RefCell<_Node>>> {
+fn create_nodes_from_labels(size: usize, labels: Option<Vec<String>>) -> (Vec<Rc<RefCell<_Node>>>, HashMap<String, Rc<RefCell<_Node>>>) {
     let labels = labels.unwrap_or_else(|| {
         (0..size).map(|x| x.to_string()).collect()
     });
     let mut node_list: Vec<Rc<RefCell<_Node>>> = Vec::new();
+    let mut hash_hack: HashMap<String, Rc<RefCell<_Node>>> = HashMap::new();
     let mut current_index: usize = 0;
     for label in labels {
         let new_node = _Node {
-                label,
+                label: label.clone(),
                 connections: Vec::new(),
                 index: Some(current_index),
                 x: None,
@@ -51,10 +55,13 @@ fn create_nodes_from_labels(size: usize, labels: Option<Vec<String>>) -> Vec<Rc<
 
         current_index += 1;
 
-        node_list.push(Rc::new(RefCell::new(new_node)));
+        let node_ptr = Rc::new(RefCell::new(new_node));
+
+        node_list.push(Rc::clone(&node_ptr));
+        hash_hack.insert(label, node_ptr);
     }
 
-    return node_list;
+    return (node_list, hash_hack);
 }
 
 fn create_node_hashmap(nodes: &Vec<Rc<RefCell<_Node>>>, start_index: usize)  -> HashMap<usize, String> {
@@ -81,17 +88,13 @@ fn invert_node_hashmap(node_hashmap: HashMap<usize, String>) -> HashMap<String, 
 impl _Graph {
     pub fn add_node(&mut self, label: String) {
 
-        let exists = self.nodes.iter().any(|node_rc| {
-            node_rc.borrow().label == label
-        });
-
-        if exists {
+        if self._node_label_hack.contains_key(&label) {
             println!("Node with label '{}' already exists!", label);
             return;
         }
 
         let new_node = _Node{
-            label: label,
+            label: label.clone(),
             connections: Vec::new(),
             index: Some(self._current_index),
             x: None,
@@ -101,23 +104,22 @@ impl _Graph {
 
         self._current_index += 1;
 
-        self.nodes.push(Rc::new(RefCell::new(new_node)));
+        let node_ptr = Rc::new(RefCell::new(new_node));
+
+        self.nodes.push(Rc::clone(&node_ptr));
+        self._node_label_hack.insert(label, node_ptr);
     }
 
 
     pub fn add_node_with_pos(&mut self, label: String, x:f64, y:f64) {
 
-        let exists = self.nodes.iter().any(|node_rc| {
-            node_rc.borrow().label == label
-        });
-
-        if exists {
+        if self._node_label_hack.contains_key(&label) {
             println!("Node with label '{}' already exists!", label);
             return;
         }
 
         let new_node = _Node{
-            label: label,
+            label: label.clone(),
             connections: Vec::new(),
             index: Some(self._current_index),
             x: Some(x),
@@ -128,18 +130,20 @@ impl _Graph {
         self._current_index += 1;
         self.positions_set = true;
 
-        self.nodes.push(Rc::new(RefCell::new(new_node)));
+        let node_ptr = Rc::new(RefCell::new(new_node));
+
+        self.nodes.push(Rc::clone(&node_ptr));
+        self._node_label_hack.insert(label, node_ptr);
     }
 
-    // O(n) bullshit, will be fixed in future updates, same thing in the add_node method
     pub fn create_connection(&mut self, from: String, to: String, weight: f32, directed: Option<bool>) {
         let directed = Some(directed.unwrap_or(false));
 
-        let from_node = self.nodes.iter().find(|n| n.borrow().label == from)
+        let from_node = self._node_label_hack.get(&from)
                 .expect("Node 'from' not found")
                 .clone();
 
-        let to_node = self.nodes.iter().find(|n| n.borrow().label == to)
+        let to_node = self._node_label_hack.get(&to)
             .expect("Node 'to' not found")
             .clone();
 
@@ -157,8 +161,16 @@ impl _Graph {
         return None;
     }
 
-    pub fn get_connections(&mut self) -> ConnectionsList {
+    pub fn get_connections(
+        &mut self,
+        from_name: Option<&str>,
+        to_name: Option<&str>,
+        use_id: bool
+    ) -> ConnectionsList {
         let mut all_connections = ConnectionsList::new();
+
+        let from_str = from_name.unwrap_or("from");
+        let to_str = to_name.unwrap_or("to");
 
         for n in &mut self.nodes {
             let node = n.borrow();
@@ -166,15 +178,21 @@ impl _Graph {
             for conn in node.connections.iter() {
                 let mut formatted_conn = ConnectionData::new();
 
-
-                formatted_conn.insert("from".to_string(), ConnectionProperty::From(node.label.clone()));
+                let mut from_property = ConnectionProperty::From(node.label.clone());
+                if use_id {
+                    from_property = ConnectionProperty::From(format!("{}", node.index.unwrap_or(0)));
+                }
+                formatted_conn.insert(from_str.to_string(), from_property);
 
                 if let Some(to_node_rc) = conn.node.upgrade() {
 
-                    let to_label = to_node_rc.borrow().label.clone();
-                    formatted_conn.insert("to".to_string(), ConnectionProperty::To(to_label));
+                    let mut to_property = ConnectionProperty::To(to_node_rc.borrow().label.clone());
+                    if use_id {
+                        to_property = ConnectionProperty::To(format!("{}", to_node_rc.borrow().index.unwrap_or(0)));
+                    }
+                    formatted_conn.insert(to_str.to_string(), to_property);
                 } else {
-                    formatted_conn.insert("to".to_string(), ConnectionProperty::To("[Removed]".to_string()));
+                    formatted_conn.insert(to_str.to_string(), ConnectionProperty::To("[Removed]".to_string()));
                 };
 
                 formatted_conn.insert("weight".to_string(), ConnectionProperty::Weight(conn.weight));
@@ -191,7 +209,7 @@ impl _Graph {
         let matrix_size = self.nodes.len();
         let mut adj_matrix: Vec<Vec<f32>> = vec![vec![0.; matrix_size]; matrix_size];
         let node_hash = invert_node_hashmap(create_node_hashmap(&self.nodes, 0));
-        let connections = self.get_connections();
+        let connections = self.get_connections(None, None, false);
 
         for conn in connections {
 
@@ -230,7 +248,7 @@ impl _Graph {
     }
 
     pub fn get_total_weight(&mut self) -> f32 {
-        let total_weight: f32 = self.get_connections()
+        let total_weight: f32 = self.get_connections(None, None, false)
             .iter()
             .map(|conn| {
                 if let ConnectionProperty::Weight(w) = conn["weight"] {
@@ -249,7 +267,7 @@ impl _Graph {
     }
 
     pub fn get_edge_count(&mut self) -> usize {
-        return self.get_connections().len();
+        return self.get_connections(None, None, false).len();
     }
 
     pub fn get_density(&mut self, directed: Option<bool>) -> f32 {
@@ -268,11 +286,11 @@ impl _Graph {
     }
 
     pub fn get_mean_weight(&mut self) -> f32 {
-        return self.get_total_weight() / self.get_connections().len() as f32;
+        return self.get_total_weight() / self.get_connections(None, None, false).len() as f32;
     }
 
     pub fn compute_degrees(&mut self, node_label: &str) -> HashMap<String, i32> {
-        let connections = self.get_connections();
+        let connections = self.get_connections(None, None, false);
 
         let mut degrees: HashMap<String, i32> = HashMap::new();
         degrees.insert("in_degree".to_string(), 0);
@@ -352,7 +370,7 @@ impl _Graph {
     }
 
     pub fn get_node_strength(&mut self, node_label: &str) -> HashMap<&str, f32> {
-        let connections = self.get_connections();
+        let connections = self.get_connections(None, None, false);
 
         let mut strengths: HashMap<&str, f32> = HashMap::new();
 
@@ -726,7 +744,7 @@ impl _Graph {
 
     pub fn output_svg(&mut self, layout: Layout, override_positions: bool, style: GraphStyle) -> String {
         let mut svg: Svg = Svg::new();
-        let connections = self.get_connections();
+        let connections = self.get_connections(None, None, false);
         let svg_string = svg.get_svg(&self.nodes, &connections, layout, self.positions_set, override_positions, style);
         return svg_string;
     }
@@ -752,24 +770,43 @@ impl _Graph {
         return _Graph {
             nodes: Vec::new(),
             positions_set: false,
-            _current_index: 0
+            build_time_ms: None,
+            _current_index: 0,
+            _node_label_hack: HashMap::new()
         };
     }
 
     pub fn from_net_file(path: &str) -> Self {
-        let new_graph = read_net_file(path).expect("Failed to read .net file");
+        let start = Instant::now();
+
+        let mut new_graph = read_net_file(path).expect("Failed to read .net file");
+
+        let duration = start.elapsed();
+
+        new_graph.build_time_ms = Some(duration.as_secs_f64() * 1000.0);
+
         return new_graph;
     }
 
     pub fn from_json_file(path: &str) -> Self {
-        let new_graph = read_json_file(path).expect("Failed to read .json file");
+        let start = Instant::now();
+
+        let mut new_graph = read_json_file(path).expect("Failed to read .json file");
+
+        let duration = start.elapsed();
+
+        new_graph.build_time_ms = Some(duration.as_secs_f64() * 1000.0);
+
         return new_graph;
     }
 
     pub fn from_adjacency_matrix(adj_matrix: Vec<Vec<f32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>) -> Self {
+        let start = Instant::now();
         let mut adj_matrix_graph = _Graph::default();
 
-        adj_matrix_graph.nodes = create_nodes_from_labels(adj_matrix.len(), custom_labels);
+        let (node_list, hash_hack) = create_nodes_from_labels(adj_matrix.len(), custom_labels);
+        adj_matrix_graph.nodes = node_list;
+        adj_matrix_graph._node_label_hack = hash_hack;
         let node_hash = create_node_hashmap(&adj_matrix_graph.nodes, 0);
 
         for i in 0..adj_matrix.len() {
@@ -788,13 +825,36 @@ impl _Graph {
             }
         }
 
+        let duration = start.elapsed();
+        adj_matrix_graph.build_time_ms = Some(duration.as_secs_f64() * 1000.0);
+
+
         return adj_matrix_graph;
     }
 
-    pub fn from_api(api: ApiSource, search: &str, limit: usize, graph_type: ApiGraphType, api_key: &str) -> Self {
-        let graph = match api {
-            ApiSource::OpenAlex => dispatch_openalex_graph_creation(search, limit, graph_type, api_key)
-        };
+    pub fn from_openalex(
+        search: Option<&str>,
+        author: Option<&str>,
+        author_id: Option<&str>,
+        author_orcid: Option<&str>,
+        keyword: Option<&str>,
+        graph_type: OpenAlexGraphType,
+        api_key: &str,
+        limit: Option<usize>,
+        min_weight: Option<f32>
+    ) -> Self {
+
+        let graph = dispatch_openalex_graph_creation(
+            search,
+            author,
+            author_id,
+            author_orcid,
+            keyword,
+            graph_type,
+            api_key,
+            limit,
+            min_weight
+        );
 
         return graph;
     }

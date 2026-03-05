@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use pyo3::prelude::*;
 
 #[derive(Deserialize, Debug)]
 pub struct OpenAlexResponse {
@@ -23,9 +24,19 @@ pub struct Author {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct AuthorReponse {
+    pub results: Option<Vec<Author>>
+}
+
+#[derive(Deserialize, Debug)]
 pub struct KeyWord {
     pub id: Option<String>,
     pub display_name: Option<String>
+}
+
+#[derive(Deserialize, Debug)]
+pub struct KeyWordResponse {
+    pub results: Option<Vec<KeyWord>>
 }
 
 #[derive(Deserialize, Debug)]
@@ -39,12 +50,11 @@ pub struct Work {
 }
 
 
-pub enum ApiSource {
-    OpenAlex
-}
-
-pub enum ApiGraphType {
+#[pyclass(eq, eq_int)]
+#[derive(Clone, PartialEq)]
+pub enum OpenAlexGraphType {
     Coauthorship,
     KeywordCooccurrence,
-    Cocitation,
+    WorkCocitation,
+    AuthorCocitation,
 }

@@ -6,6 +6,14 @@ This section explains how to **create graphs, add nodes, and create connections*
 
 ## Python Reference
 
+### Enums
+
+#### `OpenAlexGraphType`
+An enumeration defining the type of network to be generated from the OpenAlex data.
+- `Coauthorship`: Nodes represent authors, and connections represent co-authored works.
+- `KeywordCooccurrence`: Nodes represent concepts/keywords, and connections indicate they appear together in the same works.
+- `Cocitation`: Nodes represent works, and connections indicate they are cited together by other works.
+
 ### Classes
 
 #### `Graph`
@@ -46,10 +54,25 @@ Represents a graph. You can add nodes, create connections, inspect the graph, an
   ```
 ---
 
+- `from_openalex(api_key: str, graph_type: OpenAlexGraphType, search=None, author=None, author_id=None, author_orcid=None, keyword=None, limit=None, min_weight=None) -> Graph`  
+  Creates a graph by dynamically querying the OpenAlex API based on specified filters.
+
+  **Parameters:**
+  * `api_key`: Your OpenAlex API key (or email address for the polite pool).
+  * `graph_type`: The structure of the generated graph (e.g., `OpenAlexGraphType.Coauthorship`).
+  * `search`: A broad, general search query across OpenAlex works.
+  * `author`: Searches for an author by name. *Note: This will automatically use the first author that appears in the search results.*
+  * `author_id`: A precise search using a specific OpenAlex Author ID.
+  * `author_orcid`: A precise search using a specific author's ORCID.
+  * `keyword`: Filters works associated with a specific keyword.
+  * `limit`: The maximum number of items to retrieve from the API.
+  * `min_weight`: The minimum weight an edge must have to be included in the final graph.
+  
+
 ## Python Examples
 
 ```python
-from netfog import Graph, Node
+from netfog import Graph, Node, OpenAlexGraphType
 
 # Create a graph
 g = Graph()
@@ -75,4 +98,14 @@ adj_matrix = [
 g2 = Graph.from_adjacency_matrix(adj_matrix, directed=True, custom_labels=["X", "Y", "Z"])
 print("Nodes in g2:", g2.get_nodes())
 print("Connections in g2:", g2.get_connections())
+
+# Example: Co-authorship graph using a precise ORCID
+g_openalex = Graph.from_openalex(
+    api_key="your_email@example.com", 
+    graph_type=OpenAlexGraphType.Coauthorship, 
+    author_orcid="0000-0002-1825-0097",
+    limit=100,
+    min_weight=2
+)
+print("OpenAlex Graph Nodes:", len(g_openalex.get_nodes()))
 ```

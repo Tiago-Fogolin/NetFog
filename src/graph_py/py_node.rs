@@ -39,4 +39,9 @@ impl Node {
         self.inner.borrow().label.clone()
     }
 
+    #[getter]
+    fn id(&self) -> Option<usize> {
+        self.inner.borrow().index
+    }
+
 }
