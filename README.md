@@ -62,7 +62,7 @@ grafo_coautoria = Graph.from_openalex(
     limit=100
 )
 
-# 2. Grafo de coocorrência de palavras-chave, baseado em uma palavra-chave, com mínimo de intensidade 3
+# 2. Grafo de coocorrência de palavras-chave (intensidade mínima: 3)
 grafo_coocorrencia = Graph.from_openalex(
     api_key="SUA_CHAVE_API_AQUI",
     graph_type=OpenAlexGraphType.KeywordCooccurrence,
@@ -72,7 +72,7 @@ grafo_coocorrencia = Graph.from_openalex(
 )
 
 # 3. Grafo de cocitação de documentos baseado em um autor específico
-grafo_cocitacao = Graph.from_openalex(
+grafo_cocitacao_documentos = Graph.from_openalex(
     api_key="SUA_CHAVE_API_AQUI",
     graph_type=OpenAlexGraphType.WorkCocitation,
     author="Jesus Mena-Chalco",
@@ -80,7 +80,7 @@ grafo_cocitacao = Graph.from_openalex(
 )
 
 # 4. Grafo de cocitação de autores baseado em um autor específico
-grafo_cocitacao = Graph.from_openalex(
+grafo_cocitacao_autores = Graph.from_openalex(
     api_key="SUA_CHAVE_API_AQUI",
     graph_type=OpenAlexGraphType.AuthorCocitation,
     author="Jesus Mena-Chalco",
