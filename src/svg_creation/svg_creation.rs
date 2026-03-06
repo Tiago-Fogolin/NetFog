@@ -4,6 +4,7 @@ use crate::layout::layout::{Layout, get_layout_function};
 use crate::layout::style::{GraphStyle, get_line_width};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::f64;
 use std::rc::Rc;
 use std::fmt::{self, format};
 
@@ -69,13 +70,21 @@ impl Element {
 }
 
 pub struct Svg {
-    elements: Vec<Element>
+    elements: Vec<Element>,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64
 }
 
 impl Svg {
     pub fn new() -> Self {
         return Svg {
-            elements: Vec::new()
+            elements: Vec::new(),
+            min_x: f64::MAX,
+            max_x: f64::MIN,
+            min_y: f64::MAX,
+            max_y: f64::MIN
         };
     }
     fn add_arrow_def(&mut self, marker_svg: String, marker_color: String, marker_width: i32, marker_height: i32) {
@@ -222,6 +231,12 @@ impl Svg {
     ) {
         for n in nodes {
             let node = n.borrow();
+            if let (Some(x), Some(y)) = (node.x, node.y) {
+                if x < self.min_x { self.min_x = x; }
+                if x > self.max_x { self.max_x = x; }
+                if y < self.min_y { self.min_y = y; }
+                if y > self.max_y { self.max_y = y; }
+            }
             self.add_circle(&node, node_color, node_border, node_radius);
             self.add_label(&node);
         }
@@ -350,7 +365,20 @@ impl Svg {
     fn write_svg(&self) -> String {
         let mut final_svg: String = String::new();
 
-        final_svg += "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"20 20 1480 680\" width=\"100%\" height=\"100%\">";
+        let padding = 50.0;
+
+        let view_min_x = self.min_x - padding;
+        let view_min_y = self.min_y - padding;
+
+        let view_width = (self.max_x - self.min_x) + (padding * 2.0);
+        let view_height = (self.max_y - self.min_y) + (padding * 2.0);
+
+        let svg_header = format!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\" width=\"100%\" height=\"100%\">\n",
+            view_min_x, view_min_y, view_width, view_height
+        );
+
+        final_svg += &svg_header;
 
         for element in &self.elements {
             final_svg += &self.write_element(&element);

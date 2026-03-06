@@ -106,7 +106,7 @@ pub fn generate_force_layout_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
 
     let iterations = 50;
     let area = MAX_WIDTH * MAX_HEIGHT;
-    let k = (area / nodes.len() as f64).sqrt();
+    let k = (area / nodes.len() as f64).sqrt() * 2.;
     let mut temperature = MAX_WIDTH / 10.0;
 
     let fa = |d: f64, k: f64| (d * d) / k;
@@ -165,6 +165,17 @@ pub fn generate_force_layout_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
             }
         }
 
+        let gravity = 2.;
+            for (label, pos) in &pos_map {
+                let dx = SCREEN_CENTER_X - pos.0;
+                let dy = SCREEN_CENTER_Y - pos.1;
+
+                if let Some(d) = disp.get_mut(label) {
+                    d.0 += dx * gravity;
+                    d.1 += dy * gravity;
+                }
+        }
+
         for n_rc in nodes {
             let mut n = n_rc.borrow_mut();
             if let Some(d) = disp.get(&n.label) {
@@ -176,8 +187,8 @@ pub fn generate_force_layout_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
                     let new_x = n.x.unwrap_or(0.0) + limited_x;
                     let new_y = n.y.unwrap_or(0.0) + limited_y;
 
-                    n.x = Some(new_x.clamp(MIN_WIDTH, MAX_WIDTH));
-                    n.y = Some(new_y.clamp(MIN_HEIGHT, MAX_HEIGHT));
+                    n.x = Some(new_x);
+                    n.y = Some(new_y);
                 }
             }
         }
