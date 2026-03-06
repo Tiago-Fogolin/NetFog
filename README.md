@@ -58,7 +58,7 @@ from netfog import Graph, OpenAlexGraphType
 grafo_coautoria = Graph.from_openalex(
     api_key="SUA_CHAVE_API_AQUI",
     graph_type=OpenAlexGraphType.Coauthorship,
-    search="Bibliometrics",
+    author="Jesus Mena-Chalco",
     limit=100
 )
 
@@ -75,7 +75,7 @@ grafo_coocorrencia = Graph.from_openalex(
 grafo_cocitacao_documentos = Graph.from_openalex(
     api_key="SUA_CHAVE_API_AQUI",
     graph_type=OpenAlexGraphType.WorkCocitation,
-    author="Jesus Mena-Chalco",
+    search="Bibliometrics",
     limit=100
 )
 
@@ -83,7 +83,7 @@ grafo_cocitacao_documentos = Graph.from_openalex(
 grafo_cocitacao_autores = Graph.from_openalex(
     api_key="SUA_CHAVE_API_AQUI",
     graph_type=OpenAlexGraphType.AuthorCocitation,
-    author="Jesus Mena-Chalco",
+    search="Bibliometrics",
     limit=100
 )
 ```
