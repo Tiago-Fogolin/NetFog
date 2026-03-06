@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "netfog"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "approx",
  "pyo3",
