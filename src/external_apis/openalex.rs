@@ -302,7 +302,7 @@ fn openalex_cocitation(
     api_key: &str,
     limit: Option<usize>,
     min_weight: Option<f32>,
-    co_type: CocitationType // <-- Novo parâmetro
+    co_type: CocitationType
 ) -> _Graph {
     let mut graph = _Graph::default();
     let results = openalex_make_request_search(search, api_key, limit).expect("Request to OpenAlex failed!");

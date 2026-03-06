@@ -329,7 +329,14 @@ impl Svg {
 
     fn write_element(&self, element: &Element) -> String {
         if element.simple_text {
-            return element.name.clone();
+            let escaped_text = element.name
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;");
+
+            return escaped_text;
         }
 
         let mut current_element = "<".to_string();
@@ -338,9 +345,16 @@ impl Svg {
         for atribute in &element.atributes {
             current_element += " ";
             current_element += &atribute.0;
-            current_element += "=";
-            current_element += "\"";
-            current_element += &atribute.1.to_string();
+            current_element += "=\"";
+
+            let escaped_attr = atribute.1.to_string()
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;");
+
+            current_element += &escaped_attr;
             current_element += "\"";
         }
 
