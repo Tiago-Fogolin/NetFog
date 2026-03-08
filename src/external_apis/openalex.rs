@@ -3,7 +3,7 @@ use reqwest::blocking::Client;
 use std::{collections::{HashMap, HashSet}, error::Error};
 use crate::external_apis::core::{OpenAlexResponse, AuthorReponse, KeyWordResponse};
 use std::time::Instant;
-
+use std::fs::File;
 
 fn fetch_author_id(name: &str, api_key: &str) -> Result<String, Box<dyn Error>> {
     let client = Client::new();
@@ -120,7 +120,7 @@ fn openalex_make_batch_work_request(work_ids: HashSet<String>, api_key: &str) ->
     return Ok(all_works);
 }
 
-fn openalex_coauthorship(search: &str, api_key: &str, limit: Option<usize>, min_weight: Option<f32>) -> _Graph {
+fn openalex_coauthorship(search: &str, api_key: &str, limit: Option<usize>, min_weight: Option<f32>, save_json_path: Option<&str>) -> _Graph {
     let mut graph = _Graph::default();
     let results = openalex_make_request_search(search, api_key, limit).expect("Request to OpenAlex failed!");
 
@@ -202,11 +202,24 @@ fn openalex_coauthorship(search: &str, api_key: &str, limit: Option<usize>, min_
 
     graph.build_time_ms = Some(duration.as_secs_f64() * 1000.0);
 
+    if let Some(path) = save_json_path {
+        match File::create(path) {
+            Ok(file) => {
+                if let Err(e) = serde_json::to_writer_pretty(file, &results) {
+                    eprintln!("Falha ao escrever o JSON no arquivo: {}", e);
+                }
+            }
+            Err(e) => {
+                eprintln!("Falha ao criar o arquivo JSON em {}: {}", path, e);
+            }
+        }
+    }
+
     return graph;
 
 }
 
-fn openalex_keyword_cooccurrence(search: &str, api_key: &str, limit: Option<usize>, min_weight: Option<f32>) -> _Graph {
+fn openalex_keyword_cooccurrence(search: &str, api_key: &str, limit: Option<usize>, min_weight: Option<f32>, save_json_path: Option<&str>) -> _Graph {
     let mut graph = _Graph::default();
     let results = openalex_make_request_search(search, api_key, limit).expect("Request to OpenAlex failed!");
 
@@ -288,6 +301,19 @@ fn openalex_keyword_cooccurrence(search: &str, api_key: &str, limit: Option<usiz
 
     graph.build_time_ms = Some(duration.as_secs_f64() * 1000.0);
 
+    if let Some(path) = save_json_path {
+        match File::create(path) {
+            Ok(file) => {
+                if let Err(e) = serde_json::to_writer_pretty(file, &results) {
+                    eprintln!("Falha ao escrever o JSON no arquivo: {}", e);
+                }
+            }
+            Err(e) => {
+                eprintln!("Falha ao criar o arquivo JSON em {}: {}", path, e);
+            }
+        }
+    }
+
     return graph;
 
 }
@@ -302,7 +328,8 @@ fn openalex_cocitation(
     api_key: &str,
     limit: Option<usize>,
     min_weight: Option<f32>,
-    co_type: CocitationType
+    co_type: CocitationType,
+    save_json_path: Option<&str>
 ) -> _Graph {
     let mut graph = _Graph::default();
     let results = openalex_make_request_search(search, api_key, limit).expect("Request to OpenAlex failed!");
@@ -437,6 +464,19 @@ fn openalex_cocitation(
     build_time += duration_second_process;
     graph.build_time_ms = Some(build_time.as_secs_f64() * 1000.0);
 
+    if let Some(path) = save_json_path {
+        match File::create(path) {
+            Ok(file) => {
+                if let Err(e) = serde_json::to_writer_pretty(file, &results) {
+                    eprintln!("Falha ao escrever o JSON no arquivo: {}", e);
+                }
+            }
+            Err(e) => {
+                eprintln!("Falha ao criar o arquivo JSON em {}: {}", path, e);
+            }
+        }
+    }
+
     return graph;
 }
 
@@ -449,7 +489,8 @@ pub fn dispatch_openalex_graph_creation(
     graph_type: OpenAlexGraphType,
     api_key: &str,
     limit: Option<usize>,
-    min_weight: Option<f32>
+    min_weight: Option<f32>,
+    save_json_path: Option<&str>
 ) -> _Graph {
     let mut filters: Vec<String> = Vec::new();
 
@@ -491,10 +532,10 @@ pub fn dispatch_openalex_graph_creation(
     let params = query_params.join("&");
 
     let graph = match graph_type {
-        OpenAlexGraphType::Coauthorship => openalex_coauthorship(&params, api_key, limit, min_weight),
-        OpenAlexGraphType::KeywordCooccurrence => openalex_keyword_cooccurrence(&params, api_key, limit, min_weight),
-        OpenAlexGraphType::WorkCocitation => openalex_cocitation(&params, api_key, limit, min_weight, CocitationType::Work),
-        OpenAlexGraphType::AuthorCocitation => openalex_cocitation(&params, api_key, limit, min_weight, CocitationType::Author)
+        OpenAlexGraphType::Coauthorship => openalex_coauthorship(&params, api_key, limit, min_weight, save_json_path),
+        OpenAlexGraphType::KeywordCooccurrence => openalex_keyword_cooccurrence(&params, api_key, limit, min_weight, save_json_path),
+        OpenAlexGraphType::WorkCocitation => openalex_cocitation(&params, api_key, limit, min_weight, CocitationType::Work, save_json_path),
+        OpenAlexGraphType::AuthorCocitation => openalex_cocitation(&params, api_key, limit, min_weight, CocitationType::Author, save_json_path)
     };
 
     return graph;

@@ -841,7 +841,8 @@ impl _Graph {
         graph_type: OpenAlexGraphType,
         api_key: &str,
         limit: Option<usize>,
-        min_weight: Option<f32>
+        min_weight: Option<f32>,
+        save_json_path: Option<&str>
     ) -> Self {
 
         let graph = dispatch_openalex_graph_creation(
@@ -853,7 +854,8 @@ impl _Graph {
             graph_type,
             api_key,
             limit,
-            min_weight
+            min_weight,
+            save_json_path
         );
 
         return graph;

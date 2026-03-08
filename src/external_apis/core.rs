@@ -1,45 +1,45 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use pyo3::prelude::*;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct OpenAlexResponse {
     pub meta: Meta,
     pub results: Vec<Work>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct Meta {
     pub next_cursor: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct AuthorShip {
     pub author: Option<Author>
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct Author {
     pub id: Option<String>,
     pub display_name: Option<String>
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct AuthorReponse {
     pub results: Option<Vec<Author>>
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct KeyWord {
     pub id: Option<String>,
     pub display_name: Option<String>
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct KeyWordResponse {
     pub results: Option<Vec<KeyWord>>
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 pub struct Work {
     pub id: String,
     pub title: Option<String>,
