@@ -288,7 +288,7 @@ impl Graph {
     }
 
     #[staticmethod]
-    #[pyo3(signature = (api_key, graph_type, search=None, author=None, author_id=None, author_orcid=None, keyword=None, limit=None, min_weight=None))]
+    #[pyo3(signature = (api_key, graph_type, search=None, author=None, author_id=None, author_orcid=None, keyword=None, limit=None, min_weight=None, save_json_path=None))]
     fn from_openalex(
         api_key: &str,
         graph_type: OpenAlexGraphType,
@@ -299,6 +299,7 @@ impl Graph {
         keyword: Option<&str>,
         limit: Option<usize>,
         min_weight: Option<f32>,
+        save_json_path: Option<&str>
     ) -> Graph {
 
         let graph = _Graph::from_openalex(
@@ -310,7 +311,8 @@ impl Graph {
             graph_type,
             api_key,
             limit,
-            min_weight
+            min_weight,
+            save_json_path
         );
 
         Graph {
