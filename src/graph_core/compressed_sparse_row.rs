@@ -150,7 +150,7 @@ impl IGraphStructure for CompressedSparseRow {
         }
     }
     
-    fn get_all_edges(&self) -> Vec<(usize, usize, f32, bool)> {
+    fn get_all_edges(&self) -> Box<dyn Iterator<Item = (usize, usize, f32, bool)>> {
         let mut edges = Vec::new();
         for i in 0..self.node_count {
             let start = self.offsets[i];
@@ -169,6 +169,6 @@ impl IGraphStructure for CompressedSparseRow {
             }
         }
         
-        return edges;
+        return Box::new(edges.into_iter());
     }
 }

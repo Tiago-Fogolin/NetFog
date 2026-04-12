@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Iterable
 from enum import IntEnum
 
 class Layout(IntEnum):
@@ -17,6 +17,7 @@ class GraphStructureType(IntEnum):
     AdjacencyList = 1
     CompressedSparseRow = 2
     PackedCompressedSparseRow = 3
+    DiskGraph = 4
 
 class GraphStyle:
     node_color: str
@@ -49,10 +50,15 @@ class GraphStyle:
 class Graph:
     nodes: list[Node]
     build_time_ms: Optional[float]
-    def __init__(self, structure: Optional[GraphStructureType] = None) -> None: ...
+    def __init__(self, structure: Optional[GraphStructureType] = None, base_dir: Optional[str] = None, buffer_ram_mb: Optional[int] = None) -> None: 
+        """
+        Initialize the Graph component. For DiskGraph (Out-of-Core), provides base_dir for the location of binary data and buffer_ram_mb.
+        """
+        ...
     def add_node(self, label: str) -> None: ...
     def create_connection(self, from_label: str, to_label: str, weight: float = 0., directed: bool = False) -> None: ...
     def get_connections(self, from_name="from", to_name="to", use_id=False) -> list: ...
+    def get_all_edges(self) -> Iterable[tuple[int, int, float, bool]]: ...
     @staticmethod
     def from_adjacency_matrix(adj_matrix: list, directed: bool = False, custom_labels: list | None = None, structure: Optional[GraphStructureType] = None) -> "Graph": ...
     @staticmethod

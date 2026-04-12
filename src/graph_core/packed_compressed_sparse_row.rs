@@ -322,7 +322,7 @@ impl IGraphStructure for PackedCompressedSparseRow {
         for &(f, t, w, d) in connections { self.create_connection(f, t, w, Some(d)); }
     }
 
-    fn get_all_edges(&self) -> Vec<(usize, usize, f32, bool)> {
+    fn get_all_edges(&self) -> Box<dyn Iterator<Item = (usize, usize, f32, bool)>> {
         let mut edges = Vec::new();
         for i in 0..self.nodes.len() {
             let node = self.nodes[i];
@@ -334,6 +334,6 @@ impl IGraphStructure for PackedCompressedSparseRow {
                 }
             }
         }
-        edges
+        Box::new(edges.into_iter())
     }
 }

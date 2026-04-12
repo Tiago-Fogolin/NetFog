@@ -6,3 +6,4 @@ pub mod adjacency_matrix;
 pub mod adjacency_list;
 pub mod compressed_sparse_row;
 pub mod packed_compressed_sparse_row;
+pub mod disk_graph;

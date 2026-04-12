@@ -2,10 +2,12 @@ use pyo3::prelude::*;
 use std::cell::RefCell;
 use std::rc::{Rc};
 use crate::graph_core::graph::{_Graph,ConnectionProperty};
+use crate::graph_core::graph_structure_interface::IGraphStructure;
 use crate::graph_core::adjacency_matrix::AdjacencyMatrix;
 use crate::graph_core::adjacency_list::AdjacencyList;
 use crate::graph_core::compressed_sparse_row::CompressedSparseRow;
 use crate::graph_core::packed_compressed_sparse_row::PackedCompressedSparseRow;
+use crate::graph_core::disk_graph::DiskGraph;
 use crate::graph_py::py_node::Node;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
@@ -20,7 +22,8 @@ pub enum GraphStructureType {
     #[default]
     AdjacencyList,
     CompressedSparseRow,
-    PackedCompressedSparseRow
+    PackedCompressedSparseRow,
+    DiskGraph
 }
 
 enum GraphInner {
@@ -28,6 +31,7 @@ enum GraphInner {
     List(Rc<RefCell<_Graph<AdjacencyList>>>),
     CompressedSparseRow(Rc<RefCell<_Graph<CompressedSparseRow>>>),
     PackedCompressedSparseRow(Rc<RefCell<_Graph<PackedCompressedSparseRow>>>),
+    DiskGraph(Rc<RefCell<_Graph<DiskGraph>>>),
 }
 
 macro_rules! with_graph_mut {
@@ -46,6 +50,10 @@ macro_rules! with_graph_mut {
                 $body
             },
             GraphInner::PackedCompressedSparseRow(inner) => {
+                let mut $g = (*inner).borrow_mut();
+                $body
+            },
+            GraphInner::DiskGraph(inner) => {
                 let mut $g = (*inner).borrow_mut();
                 $body
             }
@@ -69,6 +77,10 @@ macro_rules! with_graph {
                 $body
             },
             GraphInner::PackedCompressedSparseRow(inner) => {
+                let $g = (*inner).borrow();
+                $body
+            },
+            GraphInner::DiskGraph(inner) => {
                 let $g = (*inner).borrow();
                 $body
             }
@@ -99,6 +111,11 @@ macro_rules! make_graph {
                 type $T = PackedCompressedSparseRow;
                 let graph = $build;
                 Graph { inner: GraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(graph))) }
+            },
+            GraphStructureType::DiskGraph => {
+                type $T = DiskGraph;
+                let graph = $build;
+                Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) }
             }
         }
     }}
@@ -110,19 +127,51 @@ pub struct Graph {
     inner: GraphInner,
 }
 
+#[pyclass(unsendable, module="netfog")]
+pub struct PyEdgeIterator {
+    inner: Box<dyn Iterator<Item = (usize, usize, f32, bool)>>,
+}
+
+#[pymethods]
+impl PyEdgeIterator {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        return slf;
+    }
+
+    fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<(usize, usize, f32, bool)> {
+        return slf.inner.next();
+    }
+}
+
 #[pymethods]
 impl Graph {
     #[new]
-    #[pyo3(signature = (structure=None))]
-    fn new(structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Self {
+    #[pyo3(signature = (structure=None, base_dir=None, buffer_ram_mb=None))]
+    fn new(structure: Option<crate::graph_py::py_graph::GraphStructureType>, base_dir: Option<String>, buffer_ram_mb: Option<usize>) -> Self {
         let type_val = structure.unwrap_or(crate::graph_py::py_graph::GraphStructureType::AdjacencyList);
         let inner = match type_val {
             crate::graph_py::py_graph::GraphStructureType::AdjacencyMatrix => GraphInner::Matrix(Rc::new(RefCell::new(_Graph::<AdjacencyMatrix>::default()))),
             crate::graph_py::py_graph::GraphStructureType::AdjacencyList => GraphInner::List(Rc::new(RefCell::new(_Graph::<AdjacencyList>::default()))),
             crate::graph_py::py_graph::GraphStructureType::CompressedSparseRow => GraphInner::CompressedSparseRow(Rc::new(RefCell::new(_Graph::<CompressedSparseRow>::default()))),
             crate::graph_py::py_graph::GraphStructureType::PackedCompressedSparseRow => GraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(_Graph::<PackedCompressedSparseRow>::default()))),
+            crate::graph_py::py_graph::GraphStructureType::DiskGraph => {
+                let dir = base_dir.unwrap_or_else(|| {
+                    use std::time::{SystemTime, UNIX_EPOCH};
+                    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+                    std::env::temp_dir().join(format!("netfog_disk_{}", t)).to_string_lossy().to_string()
+                });
+                let ram = buffer_ram_mb.unwrap_or(512);
+                let dg = DiskGraph::new(dir, ram);
+                let g = _Graph {
+                    metadata: crate::graph_core::graph_metadata::GraphMetadata::new(),
+                    structure: dg,
+                    positions_set: false,
+                    build_time_ms: None,
+                };
+                GraphInner::DiskGraph(Rc::new(RefCell::new(g)))
+            }
         };
-        Graph { inner }
+        return Graph { inner };
     }
 
     fn add_node(&self, py: Python<'_>, label: String) -> PyResult<Py<Node>> {
@@ -141,6 +190,11 @@ impl Graph {
         with_graph_mut!(self, |g| {
             g.create_connection(from_label, to_label, weight, directed);
         });
+    }
+
+    pub fn get_all_edges(&self) -> PyEdgeIterator {
+        let iter = with_graph!(self, |g| g.structure.get_all_edges());
+        return PyEdgeIterator { inner: iter };
     }
 
     fn node_by_label(&self, node_label: &str, py: Python<'_>) ->  PyResult<Py<Node>> {
@@ -349,9 +403,22 @@ impl Graph {
     #[getter]
     fn nodes(&self) -> Vec<Node> {
         with_graph!(self, |g| {
-            g.metadata.node_info.iter()
-                .map(|node_val| Node { inner: node_val.clone() })
-                .collect()
+            let count = g.get_node_count();
+            if g.metadata.node_info.len() == count {
+                g.metadata.node_info.iter()
+                    .map(|node_val| Node { inner: node_val.clone() })
+                    .collect()
+            } else {
+                (0..count).map(|i| {
+                    let node_val = crate::graph_core::node::_Node {
+                        label: g.resolve_label(i),
+                        index: Some(i),
+                        x: None,
+                        y: None,
+                    };
+                    Node { inner: node_val }
+                }).collect()
+            }
         })
     }
 

@@ -97,6 +97,18 @@ impl<S: IGraphStructure> _Graph<S> {
         self.metadata.label_id_map.get(label).copied().map(move |idx| &mut self.metadata.node_info[idx])
     }
 
+    pub fn resolve_label(&self, id: usize) -> String {
+        if let Some(label) = self.structure.resolve_label(id) {
+            return label;
+        }
+        
+        if id < self.metadata.node_info.len() {
+            return self.metadata.node_info[id].label.clone();
+        }
+
+        return format!("{}", id);
+    }
+
     pub fn get_connections(
         &mut self,
         from_name: Option<&str>,
@@ -113,19 +125,16 @@ impl<S: IGraphStructure> _Graph<S> {
         for (from_idx, to_idx, weight, directed) in edges {
             let mut formatted_conn = ConnectionData::new();
 
-            let from_node = &self.metadata.node_info[from_idx];
-            let to_node = &self.metadata.node_info[to_idx];
-
             let from_property = if use_id {
-                ConnectionProperty::From(format!("{}", from_node.index.unwrap_or(0)))
+                ConnectionProperty::From(format!("{}", from_idx))
             } else {
-                ConnectionProperty::From(from_node.label.clone())
+                ConnectionProperty::From(self.resolve_label(from_idx))
             };
 
             let to_property = if use_id {
-                ConnectionProperty::To(format!("{}", to_node.index.unwrap_or(0)))
+                ConnectionProperty::To(format!("{}", to_idx))
             } else {
-                ConnectionProperty::To(to_node.label.clone())
+                ConnectionProperty::To(self.resolve_label(to_idx))
             };
 
             formatted_conn.insert(from_str.to_string(), from_property);
@@ -156,15 +165,15 @@ impl<S: IGraphStructure> _Graph<S> {
 
     pub fn get_total_weight(&mut self) -> f32 {
         let edges = self.structure.get_all_edges();
-        edges.iter().map(|(_, _, w, _)| w).sum()
+        edges.map(|(_, _, w, _)| w).sum()
     }
 
     pub fn get_node_count(&self) -> usize {
-        return self.metadata.node_info.len();
+        return self.structure.node_count();
     }
 
     pub fn get_edge_count(&mut self) -> usize {
-        return self.structure.get_all_edges().len();
+        return self.structure.get_all_edges().count();
     }
 
     pub fn get_density(&mut self, directed: Option<bool>) -> f32 {
@@ -224,10 +233,9 @@ impl<S: IGraphStructure> _Graph<S> {
     pub fn get_all_nodes_degrees(&mut self) -> HashMap<String, HashMap<String, i32>> {
         let mut degree_hash: HashMap<String, HashMap<String, i32>> = HashMap::new();
 
-        let labels: Vec<String> = self.metadata.node_info
-                .iter()
-                .map(|n| n.label.clone())
-                .collect();
+        let labels: Vec<String> = (0..self.get_node_count())
+            .map(|i| self.resolve_label(i))
+            .collect();
 
         for label in labels {
             let degree = self.compute_degrees(&label);
@@ -309,7 +317,7 @@ impl<S: IGraphStructure> _Graph<S> {
     pub fn get_degree_distribution(&mut self) -> HashMap<&'static str, HashMap<i32 ,f32>>{
         let mut computed_degrees: Vec<HashMap<String, i32>> = Vec::new();
 
-        let labels: Vec<String> = self.metadata.node_info.iter().map(|n| n.label.clone()).collect();
+        let labels: Vec<String> = (0..self.get_node_count()).map(|i| self.resolve_label(i)).collect();
 
         for label in &labels {
             computed_degrees.push(self.compute_degrees(label));
@@ -498,7 +506,7 @@ impl<S: IGraphStructure> _Graph<S> {
         stack.push(starting_idx);
 
         while let Some(idx) = stack.pop() {
-            let label = self.metadata.node_info[idx].label.clone();
+            let label = self.resolve_label(idx);
             
             if !visited.insert(label.clone()) {
                 continue;
@@ -508,7 +516,7 @@ impl<S: IGraphStructure> _Graph<S> {
 
             let neighbors = self.structure.get_neighbors_ids(idx);
             for neighbor_idx in neighbors.into_iter().rev() {
-                let neighbor_label = self.metadata.node_info[neighbor_idx].label.clone();
+                let neighbor_label = self.resolve_label(neighbor_idx);
                 if !visited.contains(&neighbor_label) {
                     stack.push(neighbor_idx);
                 }
@@ -529,12 +537,12 @@ impl<S: IGraphStructure> _Graph<S> {
         q.push_back(starting_idx);
 
         while let Some(idx) = q.pop_front() {
-            let label = self.metadata.node_info[idx].label.clone();
+            let label = self.resolve_label(idx);
             final_order.push(label);
 
             let neighbors = self.structure.get_neighbors_ids(idx);
             for neighbor_idx in neighbors {
-                let neighbor_label = self.metadata.node_info[neighbor_idx].label.clone();
+                let neighbor_label = self.resolve_label(neighbor_idx);
                 if visited.insert(neighbor_label) {
                     q.push_back(neighbor_idx);
                 }
@@ -550,7 +558,7 @@ impl<S: IGraphStructure> _Graph<S> {
         let mut distances: HashMap<String, f64> = HashMap::new();
 
         for i in 0..size {
-            let lbl = self.metadata.node_info[i].label.clone();
+            let lbl = self.resolve_label(i);
             distances.insert(lbl, f64::INFINITY);
         }
 
@@ -564,9 +572,9 @@ impl<S: IGraphStructure> _Graph<S> {
             let mut u: Option<usize> = None;
 
             for i in 0..size {
-                let lbl = &self.metadata.node_info[i].label;
-                if !visited[i] && distances[lbl] < min_distance {
-                    min_distance = distances[lbl];
+                let lbl = self.resolve_label(i);
+                if !visited[i] && distances[&lbl] < min_distance {
+                    min_distance = distances[&lbl];
                     u = Some(i);
                 }
             }
@@ -579,11 +587,11 @@ impl<S: IGraphStructure> _Graph<S> {
 
             for v in 0..size {
                 if adj_matrix[u][v] != 0. && !visited[v] {
-                    let u_lbl = &self.metadata.node_info[u].label;
-                    let v_lbl = &self.metadata.node_info[v].label;
+                    let u_lbl = self.resolve_label(u);
+                    let v_lbl = self.resolve_label(v);
                     
-                    let alt = distances[u_lbl] as f32 + adj_matrix[u][v];
-                    if alt < distances[v_lbl] as f32 {
+                    let alt = distances[&u_lbl] as f32 + adj_matrix[u][v];
+                    if alt < distances[&v_lbl] as f32 {
                         distances.insert(v_lbl.clone(), alt as f64);
                     }
                 }
@@ -593,22 +601,53 @@ impl<S: IGraphStructure> _Graph<S> {
         return distances;
     }
 
+    pub fn get_nodes_for_render(&self) -> Vec<_Node> {
+        let count = self.structure.node_count();
+        if self.metadata.node_info.len() == count {
+            return self.metadata.node_info.clone();
+        }
+
+        return (0..count).map(|i| {
+            _Node {
+                label: self.resolve_label(i),
+                index: Some(i),
+                x: None,
+                y: None,
+            }
+        }).collect();
+    }
+
     pub fn output_svg(&mut self, layout: Layout, override_positions: bool, style: GraphStyle) -> String {
+        let edges: Vec<(usize, usize)> = self.structure.get_all_edges()
+            .map(|(u, v, _, _)| (u, v))
+            .collect();
+
+        let mut render_nodes = self.get_nodes_for_render();
+
         if !self.positions_set || override_positions {
             let layout_func = get_layout_function(layout);
-            let edges: Vec<(usize, usize)> = self.structure.get_all_edges()
-                .into_iter()
-                .map(|(u, v, _, _)| (u, v))
-                .collect();
-            layout_func(&mut self.metadata.node_info, &edges);
+            layout_func(&mut render_nodes, &edges);
+
+            if self.metadata.node_info.len() == render_nodes.len() {
+                for (dst, src) in self.metadata.node_info.iter_mut().zip(render_nodes.iter()) {
+                    dst.x = src.x;
+                    dst.y = src.y;
+                }
+            }
+
             self.positions_set = true;
+        } else if self.metadata.node_info.len() == render_nodes.len() {
+            for (dst, src) in render_nodes.iter_mut().zip(self.metadata.node_info.iter()) {
+                dst.x = src.x;
+                dst.y = src.y;
+            }
         }
 
         let mut svg: Svg = Svg::new();
         let connections = self.get_connections(None, None, false);
-        
+
         let svg_string = svg.get_svg(
-            &self.metadata.node_info,
+            &render_nodes,
             &connections,
             style
         );
@@ -622,12 +661,12 @@ impl<S: IGraphStructure> _Graph<S> {
     }
 
     pub fn output_net_file(&mut self, path: &str) {
-        let edges = self.structure.get_all_edges();
+        let edges: Vec<(usize, usize, f32, bool)> = self.structure.get_all_edges().collect();
         write_net_file(path, self.metadata.node_info.clone(), &edges).expect("Error while creating the file");
     }
 
     pub fn output_json_file(&mut self, path: &str) {
-        let edges = self.structure.get_all_edges();
+        let edges: Vec<(usize, usize, f32, bool)> = self.structure.get_all_edges().collect();
         write_json_file(path, self.metadata.node_info.clone(), &edges).expect("Error while creating the file");
     }
 }

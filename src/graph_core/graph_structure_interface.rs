@@ -11,5 +11,9 @@ pub trait IGraphStructure {
     fn batch_add_nodes(&mut self, count: usize);
     fn batch_create_connections(&mut self, connections: &[(usize, usize, f32, bool)]);
     
-    fn get_all_edges(&self) -> Vec<(usize, usize, f32, bool)>;
+    fn get_all_edges(&self) -> Box<dyn Iterator<Item = (usize, usize, f32, bool)>>;
+
+    fn resolve_label(&self, _id: usize) -> Option<String> {
+        return None;
+    }
 }
