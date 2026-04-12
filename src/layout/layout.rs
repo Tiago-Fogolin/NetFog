@@ -1,8 +1,6 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::f64::consts::PI;
 use rand::prelude::*;
-use crate::{_Node, graph_core};
+use crate::_Node;
 use pyo3::prelude::*;
 
 // Fixed for now
@@ -34,7 +32,7 @@ pub fn normalize_y(y: f64) -> f64 {
     return new_y;
 }
 
-type LayoutFn = fn(&Vec<Rc<RefCell<_Node>>>);
+type LayoutFn = fn(&mut [_Node], &[(usize, usize)]);
 
 #[pyclass(eq, eq_int)]
 #[derive(Clone, PartialEq)]
@@ -45,12 +43,10 @@ pub enum Layout {
     ForceAtlas2
 }
 
-fn generate_random_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
+fn generate_random_positions(nodes: &mut [_Node], _edges: &[(usize, usize)]) {
     let mut rng = rand::thread_rng();
 
-    for n in nodes {
-        let mut node_ref = n.borrow_mut();
-
+    for node_ref in nodes {
         let new_x = rng.gen_range(MIN_WIDTH..MAX_WIDTH);
         let new_y = rng.gen_range(MIN_HEIGHT..MAX_HEIGHT);
 
@@ -59,15 +55,13 @@ fn generate_random_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
     }
 }
 
-fn generate_circular_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
+fn generate_circular_positions(nodes: &mut [_Node], _edges: &[(usize, usize)]) {
     let len = nodes.len();
     let center_x = SCREEN_CENTER_X;
     let center_y = SCREEN_CENTER_Y;
     let radius = 200.0;
 
-    for (i, n) in nodes.iter().enumerate() {
-        let mut node_ref = n.borrow_mut();
-
+    for (i, node_ref) in nodes.iter_mut().enumerate() {
         let angle = (i as f64 / len as f64) * 2.0 * PI;
 
         let new_x = center_x + radius * angle.cos();
@@ -78,31 +72,10 @@ fn generate_circular_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
     }
 }
 
-use std::collections::HashMap;
 
-pub fn generate_force_layout_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
-    generate_random_positions(nodes);
 
-    let mut edges = Vec::new();
-    for n in nodes {
-        let node_ref = n.borrow();
-        let label_a = &node_ref.label;
-
-        for conn in &node_ref.connections {
-            if let Some(target_rc) = conn.node.upgrade() {
-                let target_ref = target_rc.borrow();
-                let label_b = &target_ref.label;
-
-                if label_a < label_b {
-                    edges.push((label_a.clone(), label_b.clone()));
-                } else {
-                    edges.push((label_b.clone(), label_a.clone()));
-                }
-            }
-        }
-    }
-    edges.sort();
-    edges.dedup();
+pub fn generate_force_layout_positions(nodes: &mut [_Node], edges: &[(usize, usize)]) {
+    generate_random_positions(nodes, edges);
 
     let iterations = 50;
     let area = MAX_WIDTH * MAX_HEIGHT;
@@ -112,123 +85,78 @@ pub fn generate_force_layout_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
     let fa = |d: f64, k: f64| (d * d) / k;
     let fr = |d: f64, k: f64| (k * k) / d;
 
-    for _ in 0..iterations {
-        let mut disp: HashMap<String, (f64, f64)> = nodes
-            .iter()
-            .map(|n| (n.borrow().label.clone(), (0.0, 0.0)))
-            .collect();
+    let mut pos: Vec<(f64, f64)> = nodes.iter().map(|n| (n.x.unwrap_or(0.0), n.y.unwrap_or(0.0))).collect();
 
-        for v_rc in nodes {
-            let v = v_rc.borrow();
-            for u_rc in nodes {
-                let u = u_rc.borrow();
-                if v.label != u.label {
-                    let dx = v.x.unwrap_or(0.0) - u.x.unwrap_or(0.0);
-                    let dy = v.y.unwrap_or(0.0) - u.y.unwrap_or(0.0);
+    for _ in 0..iterations {
+        let mut disp: Vec<(f64, f64)> = vec![(0.0, 0.0); nodes.len()];
+
+        for v in 0..nodes.len() {
+            for u in 0..nodes.len() {
+                if v != u {
+                    let dx = pos[v].0 - pos[u].0;
+                    let dy = pos[v].1 - pos[u].1;
                     let dist = dx.hypot(dy) + 0.01;
 
                     let force = fr(dist, k);
-                    if let Some(d) = disp.get_mut(&v.label) {
-                        d.0 += (dx / dist) * force;
-                        d.1 += (dy / dist) * force;
-                    }
+                    disp[v].0 += (dx / dist) * force;
+                    disp[v].1 += (dy / dist) * force;
                 }
             }
         }
 
-        let pos_map: HashMap<String, (f64, f64)> = nodes
-            .iter()
-            .map(|n| {
-                let r = n.borrow();
-                (r.label.clone(), (r.x.unwrap_or(0.0), r.y.unwrap_or(0.0)))
-            })
-            .collect();
+        for &(v, u) in edges {
+            let dx = pos[v].0 - pos[u].0;
+            let dy = pos[v].1 - pos[u].1;
+            let dist = dx.hypot(dy) + 0.01;
+            let force = fa(dist, k);
 
-        for (v_label, u_label) in &edges {
-            if let (Some(pos_v), Some(pos_u)) = (pos_map.get(v_label), pos_map.get(u_label)) {
-                let dx = pos_v.0 - pos_u.0;
-                let dy = pos_v.1 - pos_u.1;
-                let dist = dx.hypot(dy) + 0.01;
-                let force = fa(dist, k);
+            let pull_x = (dx / dist) * force;
+            let pull_y = (dy / dist) * force;
 
-                let pull_x = (dx / dist) * force;
-                let pull_y = (dy / dist) * force;
-
-                if let Some(d) = disp.get_mut(v_label) {
-                    d.0 -= pull_x;
-                    d.1 -= pull_y;
-                }
-                if let Some(d) = disp.get_mut(u_label) {
-                    d.0 += pull_x;
-                    d.1 += pull_y;
-                }
-            }
+            disp[v].0 -= pull_x;
+            disp[v].1 -= pull_y;
+            disp[u].0 += pull_x;
+            disp[u].1 += pull_y;
         }
 
         let gravity = 2.;
-            for (label, pos) in &pos_map {
-                let dx = SCREEN_CENTER_X - pos.0;
-                let dy = SCREEN_CENTER_Y - pos.1;
+        for v in 0..nodes.len() {
+            let dx = SCREEN_CENTER_X - pos[v].0;
+            let dy = SCREEN_CENTER_Y - pos[v].1;
 
-                if let Some(d) = disp.get_mut(label) {
-                    d.0 += dx * gravity;
-                    d.1 += dy * gravity;
-                }
+            disp[v].0 += dx * gravity;
+            disp[v].1 += dy * gravity;
         }
 
-        for n_rc in nodes {
-            let mut n = n_rc.borrow_mut();
-            if let Some(d) = disp.get(&n.label) {
-                let disp_len = d.0.hypot(d.1);
-                if disp_len > 0.0 {
-                    let limited_x = (d.0 / disp_len) * disp_len.min(temperature);
-                    let limited_y = (d.1 / disp_len) * disp_len.min(temperature);
+        for v in 0..nodes.len() {
+            let d = disp[v];
+            let disp_len = d.0.hypot(d.1);
+            if disp_len > 0.0 {
+                let limited_x = (d.0 / disp_len) * disp_len.min(temperature);
+                let limited_y = (d.1 / disp_len) * disp_len.min(temperature);
 
-                    let new_x = n.x.unwrap_or(0.0) + limited_x;
-                    let new_y = n.y.unwrap_or(0.0) + limited_y;
-
-                    n.x = Some(new_x);
-                    n.y = Some(new_y);
-                }
+                pos[v].0 += limited_x;
+                pos[v].1 += limited_y;
             }
         }
 
         temperature *= 0.95;
     }
+
+    for (i, node) in nodes.iter_mut().enumerate() {
+        node.x = Some(pos[i].0);
+        node.y = Some(pos[i].1);
+    }
 }
 
-pub fn generate_force_atlas_2_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
-    generate_random_positions(nodes);
+pub fn generate_force_atlas_2_positions(nodes: &mut [_Node], edges: &[(usize, usize)]) {
+    generate_random_positions(nodes, edges);
 
-    let mut edges = Vec::new();
-    let mut degrees: HashMap<String, f64> = HashMap::new();
+    let mut degrees: Vec<f64> = vec![0.0; nodes.len()];
 
-    for n in nodes {
-        let node_ref = n.borrow();
-        let label_a = &node_ref.label;
-
-        degrees.entry(label_a.clone()).or_insert(0.0);
-
-        for conn in &node_ref.connections {
-            if let Some(target_rc) = conn.node.upgrade() {
-                let target_ref = target_rc.borrow();
-                let label_b = &target_ref.label;
-
-                if label_a < label_b {
-                    edges.push((label_a.clone(), label_b.clone()));
-                } else {
-                    edges.push((label_b.clone(), label_a.clone()));
-                }
-            }
-        }
-    }
-
-    edges.sort();
-    edges.dedup();
-
-    for (u, v) in &edges {
-        *degrees.entry(u.clone()).or_insert(0.0) += 1.0;
-        *degrees.entry(v.clone()).or_insert(0.0) += 1.0;
+    for &(u, v) in edges {
+        degrees[u] += 1.0;
+        degrees[v] += 1.0;
     }
 
     let iterations = 100;
@@ -238,110 +166,81 @@ pub fn generate_force_atlas_2_positions(nodes: &Vec<Rc<RefCell<_Node>>>) {
     let center_y = SCREEN_CENTER_Y;
     let mut temperature = MAX_WIDTH / 10.0;
 
+    let mut pos: Vec<(f64, f64)> = nodes.iter().map(|n| (n.x.unwrap_or(0.0), n.y.unwrap_or(0.0))).collect();
+
     for _ in 0..iterations {
-        let mut disp: HashMap<String, (f64, f64)> = nodes
-            .iter()
-            .map(|n| (n.borrow().label.clone(), (0.0, 0.0)))
-            .collect();
+        let mut disp: Vec<(f64, f64)> = vec![(0.0, 0.0); nodes.len()];
 
-        let pos_map: HashMap<String, (f64, f64)> = nodes
-            .iter()
-            .map(|n| {
-                let r = n.borrow();
-                (r.label.clone(), (r.x.unwrap_or(0.0), r.y.unwrap_or(0.0)))
-            })
-            .collect();
-
-        let node_labels: Vec<String> = pos_map.keys().cloned().collect();
-
-        for i in 0..node_labels.len() {
-            for j in (i + 1)..node_labels.len() {
-                let v_label = &node_labels[i];
-                let u_label = &node_labels[j];
-
-                if let (Some(pos_v), Some(pos_u)) = (pos_map.get(v_label), pos_map.get(u_label)) {
-                    let dx = pos_v.0 - pos_u.0;
-                    let dy = pos_v.1 - pos_u.1;
-                    let dist = dx.hypot(dy) + 0.01;
-
-                    let mass_v = degrees.get(v_label).unwrap_or(&0.0) + 1.0;
-                    let mass_u = degrees.get(u_label).unwrap_or(&0.0) + 1.0;
-
-                    let force = kr * (mass_v * mass_u) / dist;
-
-                    let push_x = (dx / dist) * force;
-                    let push_y = (dy / dist) * force;
-
-                    if let Some(d) = disp.get_mut(v_label) {
-                        d.0 += push_x;
-                        d.1 += push_y;
-                    }
-                    if let Some(d) = disp.get_mut(u_label) {
-                        d.0 -= push_x;
-                        d.1 -= push_y;
-                    }
-                }
-            }
-        }
-
-        for (v_label, u_label) in &edges {
-            if let (Some(pos_v), Some(pos_u)) = (pos_map.get(v_label), pos_map.get(u_label)) {
-                let dx = pos_v.0 - pos_u.0;
-                let dy = pos_v.1 - pos_u.1;
+        for i in 0..nodes.len() {
+            for j in (i + 1)..nodes.len() {
+                let dx = pos[i].0 - pos[j].0;
+                let dy = pos[i].1 - pos[j].1;
                 let dist = dx.hypot(dy) + 0.01;
 
-                let force = dist;
+                let mass_v = degrees[i] + 1.0;
+                let mass_u = degrees[j] + 1.0;
 
-                let pull_x = (dx / dist) * force;
-                let pull_y = (dy / dist) * force;
+                let force = kr * (mass_v * mass_u) / dist;
 
-                if let Some(d) = disp.get_mut(v_label) {
-                    d.0 -= pull_x;
-                    d.1 -= pull_y;
-                }
-                if let Some(d) = disp.get_mut(u_label) {
-                    d.0 += pull_x;
-                    d.1 += pull_y;
-                }
+                let push_x = (dx / dist) * force;
+                let push_y = (dy / dist) * force;
+
+                disp[i].0 += push_x;
+                disp[i].1 += push_y;
+                disp[j].0 -= push_x;
+                disp[j].1 -= push_y;
             }
         }
 
-        for (label, pos) in &pos_map {
-            let dx = center_x - pos.0;
-            let dy = center_y - pos.1;
+        for &(v, u) in edges {
+            let dx = pos[v].0 - pos[u].0;
+            let dy = pos[v].1 - pos[u].1;
             let dist = dx.hypot(dy) + 0.01;
 
-            let mass = degrees.get(label).unwrap_or(&0.0) + 1.0;
+            let force = dist;
 
+            let pull_x = (dx / dist) * force;
+            let pull_y = (dy / dist) * force;
+
+            disp[v].0 -= pull_x;
+            disp[v].1 -= pull_y;
+            disp[u].0 += pull_x;
+            disp[u].1 += pull_y;
+        }
+
+        for v in 0..nodes.len() {
+            let dx = center_x - pos[v].0;
+            let dy = center_y - pos[v].1;
+            let dist = dx.hypot(dy) + 0.01;
+
+            let mass = degrees[v] + 1.0;
             let force = kg * mass;
 
             let pull_x = (dx / dist) * force;
             let pull_y = (dy / dist) * force;
 
-            if let Some(d) = disp.get_mut(label) {
-                d.0 += pull_x;
-                d.1 += pull_y;
-            }
+            disp[v].0 += pull_x;
+            disp[v].1 += pull_y;
         }
 
-        for n_rc in nodes {
-            let mut n = n_rc.borrow_mut();
-            if let Some(d) = disp.get(&n.label) {
-                let disp_len = d.0.hypot(d.1);
-                if disp_len > 0.0 {
-                    let limited_x = (d.0 / disp_len) * disp_len.min(temperature);
-                    let limited_y = (d.1 / disp_len) * disp_len.min(temperature);
+        for v in 0..nodes.len() {
+            let d = disp[v];
+            let disp_len = d.0.hypot(d.1);
+            if disp_len > 0.0 {
+                let limited_x = (d.0 / disp_len) * disp_len.min(temperature);
+                let limited_y = (d.1 / disp_len) * disp_len.min(temperature);
 
-                    let new_x = n.x.unwrap_or(0.0) + limited_x;
-                    let new_y = n.y.unwrap_or(0.0) + limited_y;
-
-                    n.x = Some(new_x.clamp(MIN_WIDTH, MAX_WIDTH));
-                    n.y = Some(new_y.clamp(MIN_HEIGHT, MAX_HEIGHT));
-                }
+                pos[v].0 = (pos[v].0 + limited_x).clamp(MIN_WIDTH, MAX_WIDTH);
+                pos[v].1 = (pos[v].1 + limited_y).clamp(MIN_HEIGHT, MAX_HEIGHT);
             }
         }
 
         temperature *= 0.95;
+    }
+
+    for (i, node) in nodes.iter_mut().enumerate() {
+        node.x = Some(pos[i].0);
+        node.y = Some(pos[i].1);
     }
 }
 

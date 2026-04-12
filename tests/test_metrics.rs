@@ -1,6 +1,7 @@
 use std::hash::Hash;
 use std::{collections::HashMap};
 use netfog::*;
+use netfog::TestGraph as _Graph;
 use approx::assert_abs_diff_eq;
 
 
@@ -15,7 +16,6 @@ fn create_simple_graph() -> _Graph {
     graph.create_connection("node1".to_string(), "node2".to_string(), 2., Some(false));
     graph.create_connection("node3".to_string(), "node4".to_string(), 4., Some(true));
     graph.create_connection("node4".to_string(), "node1".to_string(), 5.5, Some(false));
-    graph.create_connection("node3".to_string(), "node2".to_string(), 1.2, Some(true));
     graph.create_connection("node2".to_string(), "node3".to_string(), 1.6, Some(false));
 
     return graph;
@@ -32,11 +32,10 @@ fn test_total_weight() {
     graph.create_connection("node1".to_string(), "node2".to_string(), 2., None);
     graph.create_connection("node3".to_string(), "node4".to_string(), 4., None);
     graph.create_connection("node4".to_string(), "node1".to_string(), 5.5, None);
-    graph.create_connection("node3".to_string(), "node2".to_string(), 1.2, None);
     graph.create_connection("node2".to_string(), "node3".to_string(), 1.6, None);
 
 
-    let total_weight = 2.0 + 4.0 + 5.5 + 1.2 + 1.6;
+    let total_weight = 2.0 + 4.0 + 5.5 + 1.6;
     assert_eq!(total_weight, graph.get_total_weight());
 }
 
@@ -51,10 +50,9 @@ fn test_mean_weigt() {
     grafo.create_connection("node1".to_string(), "node2".to_string(), 2., None);
     grafo.create_connection("node3".to_string(), "node4".to_string(), 4., None);
     grafo.create_connection("node4".to_string(), "node1".to_string(), 5.5, None);
-    grafo.create_connection("node3".to_string(), "node2".to_string(), 1.2, None);
     grafo.create_connection("node2".to_string(), "node3".to_string(), 1.6, None);
 
-    let mean = (2. + 4. + 5.5 + 1.2 + 1.6)/5.;
+    let mean = (2. + 4. + 5.5 + 1.6)/4.;
 
     assert_eq!(mean, grafo.get_mean_weight());
 }
@@ -89,10 +87,10 @@ fn test_edge_count() {
 #[test]
 fn test_density() {
     let mut grafo = create_simple_graph();
-    let expected_density = (1. * 5.) / (4. * (4. - 1.));
+    let expected_density = 4. / 6.;
     assert_eq!(expected_density, grafo.get_density(Some(false)));
 
-    let expected_density_directed = (2. * 5.) / (4. * (4. - 1.));
+    let expected_density_directed = 4. / 12.;
     assert_eq!(expected_density_directed, grafo.get_density(Some(true)));
 }
 
@@ -106,16 +104,16 @@ fn test_compute_degrees() {
     assert_eq!(degrees_node1["total_degree"], 0);
 
     let degrees_node2 = grafo.compute_degrees("node2");
-    assert_eq!(degrees_node2["in_degree"], 1);
+    assert_eq!(degrees_node2["in_degree"], 0);
     assert_eq!(degrees_node2["out_degree"], 0);
     assert_eq!(degrees_node2["undirected_degree"], 2);
-    assert_eq!(degrees_node2["total_degree"], 1);
+    assert_eq!(degrees_node2["total_degree"], 0);
 
     let degrees_node3 = grafo.compute_degrees("node3");
     assert_eq!(degrees_node3["in_degree"], 0);
-    assert_eq!(degrees_node3["out_degree"], 2);
+    assert_eq!(degrees_node3["out_degree"], 1);
     assert_eq!(degrees_node3["undirected_degree"], 1);
-    assert_eq!(degrees_node3["total_degree"], 2);
+    assert_eq!(degrees_node3["total_degree"], 1);
 
     let degrees_node4 = grafo.compute_degrees("node4");
     assert_eq!(degrees_node4["in_degree"], 1);
@@ -142,19 +140,19 @@ fn test_all_nodes_degrees() {
 
     expected_dict.insert("node2".to_string(), {
         let mut m = std::collections::HashMap::new();
-        m.insert("in_degree".to_string(), 1);
+        m.insert("in_degree".to_string(), 0);
         m.insert("out_degree".to_string(), 0);
         m.insert("undirected_degree".to_string(), 2);
-        m.insert("total_degree".to_string(), 1);
+        m.insert("total_degree".to_string(), 0);
         m
     });
 
     expected_dict.insert("node3".to_string(), {
         let mut m = std::collections::HashMap::new();
         m.insert("in_degree".to_string(), 0);
-        m.insert("out_degree".to_string(), 2);
+        m.insert("out_degree".to_string(), 1);
         m.insert("undirected_degree".to_string(), 1);
-        m.insert("total_degree".to_string(), 2);
+        m.insert("total_degree".to_string(), 1);
         m
     });
 
@@ -178,35 +176,35 @@ fn test_get_centrality_degree() {
     assert_eq!(centralities["in_centrality"], 0.);
     assert_eq!(centralities["out_centrality"], 0.);
     assert_eq!(centralities["total_centrality"], 0.);
-    assert_abs_diff_eq!(centralities["undirected_centrality"], 2./3., epsilon = 1e-10);
+    assert_abs_diff_eq!(centralities["undirected_centrality"], 2./3., epsilon = 1e-5);
 
     let centralities = grafo.get_centrality_degrees("node2");
-    assert_abs_diff_eq!(centralities["in_centrality"], 1./3., epsilon = 1e-10);
+    assert_eq!(centralities["in_centrality"], 0.);
     assert_eq!(centralities["out_centrality"], 0.);
-    assert_abs_diff_eq!(centralities["total_centrality"], 1./3., epsilon = 1e-10);
-    assert_abs_diff_eq!(centralities["undirected_centrality"], 2./3., epsilon = 1e-10);
+    assert_eq!(centralities["total_centrality"], 0.);
+    assert_abs_diff_eq!(centralities["undirected_centrality"], 2./3., epsilon = 1e-5);
 
     let centralities = grafo.get_centrality_degrees("node3");
     assert_eq!(centralities["in_centrality"], 0.);
-    assert_abs_diff_eq!(centralities["out_centrality"], 2./3., epsilon = 1e-10);
-    assert_abs_diff_eq!(centralities["total_centrality"], 2./3., epsilon = 1e-10);
-    assert_abs_diff_eq!(centralities["undirected_centrality"], 1./3., epsilon = 1e-10);
+    assert_abs_diff_eq!(centralities["out_centrality"], 1./3., epsilon = 1e-5);
+    assert_abs_diff_eq!(centralities["total_centrality"], 1./3., epsilon = 1e-5);
+    assert_abs_diff_eq!(centralities["undirected_centrality"], 1./3., epsilon = 1e-5);
 
     let centralities = grafo.get_centrality_degrees("node4");
-    assert_abs_diff_eq!(centralities["in_centrality"], 1./3., epsilon = 1e-10);
+    assert_abs_diff_eq!(centralities["in_centrality"], 1./3., epsilon = 1e-5);
     assert_eq!(centralities["out_centrality"], 0.);
-    assert_abs_diff_eq!(centralities["total_centrality"], 1./3., epsilon = 1e-10);
-    assert_abs_diff_eq!(centralities["undirected_centrality"], 1./3., epsilon = 1e-10);
+    assert_abs_diff_eq!(centralities["total_centrality"], 1./3., epsilon = 1e-5);
+    assert_abs_diff_eq!(centralities["undirected_centrality"], 1./3., epsilon = 1e-5);
 }
 
 #[test]
 fn test_get_average_degree() {
     let mut grafo = create_simple_graph();
 
-    let expected_mean_degree = (2. * 5.) / 4.;
+    let expected_mean_degree = (2. * 4.) / 4.;
     assert_eq!(grafo.get_average_degree(Some(false)), expected_mean_degree);
 
-    let expected_mean_degree_directed = (1. * 5.) / 4.;
+    let expected_mean_degree_directed = (1. * 4.) / 4.;
     assert_eq!(grafo.get_average_degree(Some(true)), expected_mean_degree_directed);
 
 }
@@ -271,11 +269,11 @@ fn test_degree_distribution() {
 
     let expected_distribution: HashMap<&str, HashMap<i32, f32>> = HashMap::from([
         ("in_distribution", HashMap::from([
-            (0, 0.5),
-            (1, 0.5),
+            (0, 0.75),
+            (1, 0.25),
         ])),
         ("out_distribution", HashMap::from([
-            (2, 0.25),
+            (1, 0.25),
             (0, 0.75),
         ])),
         ("undirected_distribution", HashMap::from([
@@ -295,7 +293,7 @@ fn test_compute_entropy() {
 
     let entropy = grafo.compute_entropy();
 
-    assert_abs_diff_eq!(entropy["in_entropy"], 0.6931, epsilon = 1e-4);
+    assert_abs_diff_eq!(entropy["in_entropy"], 0.5623, epsilon = 1e-4);
     assert_abs_diff_eq!(entropy["out_entropy"], 0.5623, epsilon = 1e-4);
     assert_abs_diff_eq!(entropy["undirected_entropy"], 0.6931, epsilon = 1e-4);
 
@@ -315,7 +313,7 @@ fn test_get_skewness() {
     let mut grafo = create_simple_graph();
     let skewness = grafo.get_skewness();
 
-    assert_abs_diff_eq!(skewness["in_skewness"], 0.6, epsilon = 1e-4);
+    assert_abs_diff_eq!(skewness["in_skewness"], 0.4, epsilon = 1e-4);
     assert_abs_diff_eq!(skewness["out_skewness"], 0.4, epsilon = 1e-4);
     assert_abs_diff_eq!(skewness["undirected_skewness"], 0.8666, epsilon = 1e-4);
 

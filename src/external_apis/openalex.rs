@@ -1,4 +1,5 @@
-use crate::{_Graph, Graph, external_apis::core::{OpenAlexGraphType, Work}};
+use crate::{_Graph, external_apis::core::{OpenAlexGraphType, Work}};
+use crate::graph_core::adjacency_matrix::AdjacencyMatrix;
 use reqwest::blocking::Client;
 use std::{collections::{HashMap, HashSet}, error::Error};
 use crate::external_apis::core::{OpenAlexResponse, AuthorReponse, KeyWordResponse};
@@ -120,7 +121,7 @@ fn openalex_make_batch_work_request(work_ids: HashSet<String>, api_key: &str) ->
     return Ok(all_works);
 }
 
-fn openalex_coauthorship(search: &str, api_key: &str, limit: Option<usize>, min_weight: Option<f32>, save_json_path: Option<&str>) -> _Graph {
+fn openalex_coauthorship<S: crate::graph_core::graph_structure_interface::IGraphStructure + Default>(search: &str, api_key: &str, limit: Option<usize>, min_weight: Option<f32>, save_json_path: Option<&str>) -> _Graph<S> {
     let mut graph = _Graph::default();
     let results = openalex_make_request_search(search, api_key, limit).expect("Request to OpenAlex failed!");
 
@@ -219,7 +220,7 @@ fn openalex_coauthorship(search: &str, api_key: &str, limit: Option<usize>, min_
 
 }
 
-fn openalex_keyword_cooccurrence(search: &str, api_key: &str, limit: Option<usize>, min_weight: Option<f32>, save_json_path: Option<&str>) -> _Graph {
+fn openalex_keyword_cooccurrence<S: crate::graph_core::graph_structure_interface::IGraphStructure + Default>(search: &str, api_key: &str, limit: Option<usize>, min_weight: Option<f32>, save_json_path: Option<&str>) -> _Graph<S> {
     let mut graph = _Graph::default();
     let results = openalex_make_request_search(search, api_key, limit).expect("Request to OpenAlex failed!");
 
@@ -323,14 +324,14 @@ pub enum CocitationType {
     Author,
 }
 
-fn openalex_cocitation(
+fn openalex_cocitation<S: crate::graph_core::graph_structure_interface::IGraphStructure + Default>(
     search: &str,
     api_key: &str,
     limit: Option<usize>,
     min_weight: Option<f32>,
     co_type: CocitationType,
     save_json_path: Option<&str>
-) -> _Graph {
+) -> _Graph<S> {
     let mut graph = _Graph::default();
     let results = openalex_make_request_search(search, api_key, limit).expect("Request to OpenAlex failed!");
 
@@ -480,7 +481,7 @@ fn openalex_cocitation(
     return graph;
 }
 
-pub fn dispatch_openalex_graph_creation(
+pub fn dispatch_openalex_graph_creation<S: crate::graph_core::graph_structure_interface::IGraphStructure + Default>(
     search: Option<&str>,
     author: Option<&str>,
     author_id: Option<&str>,
@@ -491,7 +492,7 @@ pub fn dispatch_openalex_graph_creation(
     limit: Option<usize>,
     min_weight: Option<f32>,
     save_json_path: Option<&str>
-) -> _Graph {
+) -> _Graph<S> {
     let mut filters: Vec<String> = Vec::new();
 
     if let Some(name) = author {

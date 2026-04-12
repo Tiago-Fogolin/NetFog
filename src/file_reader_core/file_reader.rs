@@ -1,13 +1,14 @@
-use crate::{_Node,_Graph};
+use crate::_Graph;
+use crate::graph_core::adjacency_matrix::AdjacencyMatrix;
 use std::{collections::HashMap};
 use std::fs::File;
 use std::fs;
-use std::io::{self, BufRead, BufReader, Error};
+use std::io::{BufRead, BufReader, Error};
 use crate::layout::layout::{denormalize_x, denormalize_y};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub fn read_net_file(file_path: &str) -> Result<_Graph, Error> {
+pub fn read_net_file<S: crate::graph_core::graph_structure_interface::IGraphStructure + Default>(file_path: &str) -> Result<_Graph<S>, Error> {
 
     let file = File::open(file_path).expect("Failed to open file");
     let reader = BufReader::new(file);
@@ -54,7 +55,7 @@ pub fn read_net_file(file_path: &str) -> Result<_Graph, Error> {
             let node_label = line[start_node.unwrap()+1..end_node.unwrap()].to_string();
 
             let elements: Vec<&str> = line.split(' ').collect();
-            let node_index = 0;
+            let _node_index = 0;
 
 
             if elements.len() == 2 {
@@ -133,7 +134,7 @@ pub struct JsonGraph {
     pub arcs: Option<Vec<JsonConnection>>,
 }
 
-pub fn read_json_file(file_path: &str) -> Result<_Graph, Error> {
+pub fn read_json_file<S: crate::graph_core::graph_structure_interface::IGraphStructure + Default>(file_path: &str) -> Result<_Graph<S>, Error> {
     let path = Path::new(file_path);
     let content = fs::read_to_string(path)?;
 

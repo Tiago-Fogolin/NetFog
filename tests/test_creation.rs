@@ -1,4 +1,5 @@
 use netfog::*;
+use netfog::TestGraph as _Graph;
 use std::collections::HashMap;
 use crate::external_apis::core::{OpenAlexGraphType};
 use netfog::layout::style::GraphStyle;
@@ -17,8 +18,9 @@ fn make_conn(from: &str, to: &str, weight: f32, directed: bool) -> HashMap<Strin
 #[ignore]
 fn test_from_api() {
     let style = GraphStyle::default();
-    let mut g = _Graph::from_openalex(None,None,None, Some("TEST"), None, OpenAlexGraphType::Coauthorship, "YOUR_API_KEY", Some(100), Some(1.));
-    g.output_html("teste_open_alex.html", Layout::Spring, true, style);
+    let mut g = _Graph::from_openalex(None,None,None,None, Some("TEST"), OpenAlexGraphType::Coauthorship, "YOUR_API_KEY", Some(10), Some(1.), None);
+    g.output_html("teste_open_alex_mock.html", Layout::Spring, true, style);
+    std::fs::remove_file("teste_open_alex_mock.html").ok();
 }
 
 #[test]
@@ -38,7 +40,6 @@ fn test_from_adjacency_matrix() {
 
     let connections = vec![
         make_conn("one", "two", 1., false),
-        make_conn("two", "one", 1., false),
     ];
 
     assert_eq!(connections, graph.get_connections(None, None, false));

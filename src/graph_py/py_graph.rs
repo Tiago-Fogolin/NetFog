@@ -1,8 +1,11 @@
-
 use pyo3::prelude::*;
 use std::cell::RefCell;
 use std::rc::{Rc};
 use crate::graph_core::graph::{_Graph,ConnectionProperty};
+use crate::graph_core::adjacency_matrix::AdjacencyMatrix;
+use crate::graph_core::adjacency_list::AdjacencyList;
+use crate::graph_core::compressed_sparse_row::CompressedSparseRow;
+use crate::graph_core::packed_compressed_sparse_row::PackedCompressedSparseRow;
 use crate::graph_py::py_node::Node;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
@@ -10,44 +13,151 @@ use crate::external_apis::core::OpenAlexGraphType;
 use pyo3::types::PyDict;
 use pyo3_stub_gen::derive::gen_stub_pyclass;
 
+#[pyclass(eq, eq_int)]
+#[derive(Clone, PartialEq, Default)]
+pub enum GraphStructureType {
+    AdjacencyMatrix,
+    #[default]
+    AdjacencyList,
+    CompressedSparseRow,
+    PackedCompressedSparseRow
+}
 
+enum GraphInner {
+    Matrix(Rc<RefCell<_Graph<AdjacencyMatrix>>>),
+    List(Rc<RefCell<_Graph<AdjacencyList>>>),
+    CompressedSparseRow(Rc<RefCell<_Graph<CompressedSparseRow>>>),
+    PackedCompressedSparseRow(Rc<RefCell<_Graph<PackedCompressedSparseRow>>>),
+}
+
+macro_rules! with_graph_mut {
+    ($self:expr, |$g:ident| $body:expr) => {
+        match &$self.inner {
+            GraphInner::Matrix(inner) => {
+                let mut $g = (*inner).borrow_mut();
+                $body
+            },
+            GraphInner::List(inner) => {
+                let mut $g = (*inner).borrow_mut();
+                $body
+            },
+            GraphInner::CompressedSparseRow(inner) => {
+                let mut $g = (*inner).borrow_mut();
+                $body
+            },
+            GraphInner::PackedCompressedSparseRow(inner) => {
+                let mut $g = (*inner).borrow_mut();
+                $body
+            }
+        }
+    }
+}
+
+macro_rules! with_graph {
+    ($self:expr, |$g:ident| $body:expr) => {
+        match &$self.inner {
+            GraphInner::Matrix(inner) => {
+                let $g = (*inner).borrow();
+                $body
+            },
+            GraphInner::List(inner) => {
+                let $g = (*inner).borrow();
+                $body
+            },
+            GraphInner::CompressedSparseRow(inner) => {
+                let $g = (*inner).borrow();
+                $body
+            },
+            GraphInner::PackedCompressedSparseRow(inner) => {
+                let $g = (*inner).borrow();
+                $body
+            }
+        }
+    }
+}
+
+macro_rules! make_graph {
+    ($structure:expr, |$T:ident| $build:expr) => {{
+        let type_val = $structure.unwrap_or(GraphStructureType::AdjacencyList);
+        match type_val {
+            GraphStructureType::AdjacencyMatrix => {
+                type $T = AdjacencyMatrix;
+                let graph = $build;
+                Graph { inner: GraphInner::Matrix(Rc::new(RefCell::new(graph))) }
+            },
+            GraphStructureType::AdjacencyList => {
+                type $T = AdjacencyList;
+                let graph = $build;
+                Graph { inner: GraphInner::List(Rc::new(RefCell::new(graph))) }
+            },
+            GraphStructureType::CompressedSparseRow => {
+                type $T = CompressedSparseRow;
+                let graph = $build;
+                Graph { inner: GraphInner::CompressedSparseRow(Rc::new(RefCell::new(graph))) }
+            },
+            GraphStructureType::PackedCompressedSparseRow => {
+                type $T = PackedCompressedSparseRow;
+                let graph = $build;
+                Graph { inner: GraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(graph))) }
+            }
+        }
+    }}
+}
 
 #[gen_stub_pyclass]
 #[pyclass(unsendable, module="netfog")]
 pub struct Graph {
-    inner: Rc<RefCell<_Graph>>,
+    inner: GraphInner,
 }
 
 #[pymethods]
 impl Graph {
     #[new]
-    fn new() -> Self {
-        Graph {
-            inner: Rc::new(RefCell::new(_Graph::default())),
-        }
+    #[pyo3(signature = (structure=None))]
+    fn new(structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Self {
+        let type_val = structure.unwrap_or(crate::graph_py::py_graph::GraphStructureType::AdjacencyList);
+        let inner = match type_val {
+            crate::graph_py::py_graph::GraphStructureType::AdjacencyMatrix => GraphInner::Matrix(Rc::new(RefCell::new(_Graph::<AdjacencyMatrix>::default()))),
+            crate::graph_py::py_graph::GraphStructureType::AdjacencyList => GraphInner::List(Rc::new(RefCell::new(_Graph::<AdjacencyList>::default()))),
+            crate::graph_py::py_graph::GraphStructureType::CompressedSparseRow => GraphInner::CompressedSparseRow(Rc::new(RefCell::new(_Graph::<CompressedSparseRow>::default()))),
+            crate::graph_py::py_graph::GraphStructureType::PackedCompressedSparseRow => GraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(_Graph::<PackedCompressedSparseRow>::default()))),
+        };
+        Graph { inner }
     }
 
     fn add_node(&self, py: Python<'_>, label: String) -> PyResult<Py<Node>> {
-        self.inner.borrow_mut().add_node(label.clone());
-        let node_rc = self.inner.borrow().nodes.last().unwrap().clone();
-        let node = Node { inner: node_rc };
+        with_graph_mut!(self, |g| {
+            g.add_node(label.clone());
+        });
+        let node_val = with_graph!(self, |g| {
+            g.metadata.node_info.last().unwrap().clone()
+        });
+        let node = Node { inner: node_val };
         return Py::new(py, node);
     }
 
     #[pyo3(signature = (from_label, to_label, weight=0., directed=false))]
     fn create_connection(&self, from_label: String, to_label: String, weight: f32, directed: Option<bool>) {
-        self.inner.borrow_mut().create_connection(from_label, to_label, weight, directed);
+        with_graph_mut!(self, |g| {
+            g.create_connection(from_label, to_label, weight, directed);
+        });
     }
 
     fn node_by_label(&self, node_label: &str, py: Python<'_>) ->  PyResult<Py<Node>> {
-        let node_rc = self.inner.borrow().nodes.last().unwrap().clone();
-        let node = Node { inner: node_rc };
-        return Py::new(py, node);
+        let node_val_opt = with_graph!(self, |g| {
+            g.metadata.label_id_map.get(node_label).map(|&idx| g.metadata.node_info[idx].clone())
+        });
+
+        if let Some(node_val) = node_val_opt {
+            let node = Node { inner: node_val };
+            return Py::new(py, node);
+        }
+        return Err(pyo3::exceptions::PyValueError::new_err("Node not found"));
     }
 
     #[pyo3(signature = (from_name="from", to_name="to", use_id=false))]
     fn get_connections(&self, from_name: Option<&str>, to_name:Option<&str>, use_id: bool, py: Python<'_>) ->  PyResult<Vec<Py<PyDict>>> {
-         let connections_snapshot = self.inner.borrow_mut().get_connections(from_name, to_name, use_id);
+         let connections_snapshot = with_graph_mut!(self, |g| g.get_connections(from_name, to_name, use_id));
 
         let mut py_connections: Vec<Py<PyDict>> = Vec::new();
 
@@ -70,31 +180,31 @@ impl Graph {
     }
 
     fn generate_adjacency_matrix(&self) -> PyResult<Vec<Vec<f32>>> {
-        return Ok(self.inner.borrow_mut().generate_adjacency_matrix());
+        return Ok(with_graph_mut!(self, |g| g.generate_adjacency_matrix()));
     }
 
     fn get_total_weight(&self) -> PyResult<f32> {
-        return Ok(self.inner.borrow_mut().get_total_weight());
+        return Ok(with_graph_mut!(self, |g| g.get_total_weight()));
     }
 
     fn get_mean_weight(&self) -> PyResult<f32> {
-        return Ok(self.inner.borrow_mut().get_mean_weight());
+        return Ok(with_graph_mut!(self, |g| g.get_mean_weight()));
     }
 
     pub fn get_node_count(&self) -> PyResult<usize> {
-        return Ok(self.inner.borrow().get_node_count());
+        return Ok(with_graph!(self, |g| g.get_node_count()));
     }
 
     pub fn get_edge_count(&self) -> PyResult<usize> {
-        return Ok(self.inner.borrow_mut().get_edge_count());
+        return Ok(with_graph_mut!(self, |g| g.get_edge_count()));
     }
 
     pub fn get_density(&self, directed: Option<bool>) -> PyResult<f32> {
-        return Ok(self.inner.borrow_mut().get_density(directed));
+        return Ok(with_graph_mut!(self, |g| g.get_density(directed)));
     }
 
     pub fn compute_degrees(&self, node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let degrees_snapshot = self.inner.borrow_mut().compute_degrees(node_label);
+        let degrees_snapshot = with_graph_mut!(self, |g| g.compute_degrees(node_label));
         let degrees = PyDict::new(py);
 
         for (key, value) in degrees_snapshot.iter() {
@@ -105,8 +215,7 @@ impl Graph {
     }
 
     pub fn get_centrality_degrees(&self, node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let mut inner = self.inner.borrow_mut();
-        let centrality_snapshot = inner.get_centrality_degrees(node_label);
+        let centrality_snapshot = with_graph_mut!(self, |g| g.get_centrality_degrees(node_label));
         let centralities = PyDict::new(py);
 
         for (key, value) in centrality_snapshot.iter() {
@@ -117,8 +226,7 @@ impl Graph {
     }
 
     pub fn get_node_strength(&self, node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let mut inner = self.inner.borrow_mut();
-        let strength_snapshot = inner.get_node_strength(node_label);
+        let strength_snapshot = with_graph_mut!(self, |g| g.get_node_strength(node_label));
         let strength = PyDict::new(py);
 
         for (key, value) in strength_snapshot.iter() {
@@ -130,7 +238,7 @@ impl Graph {
 
     pub fn get_all_nodes_degrees(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
         let degrees = PyDict::new(py);
-        let all_node_degrees_hash = self.inner.borrow_mut().get_all_nodes_degrees();
+        let all_node_degrees_hash = with_graph_mut!(self, |g| g.get_all_nodes_degrees());
 
         for (key, value) in all_node_degrees_hash.iter() {
             degrees.set_item(key, value)?;
@@ -141,13 +249,12 @@ impl Graph {
 
     #[pyo3(signature = (directed=false))]
     pub fn get_average_degree(&self, directed: Option<bool>) -> PyResult<f32> {
-        let average_degree = self.inner.borrow_mut().get_average_degree(directed);
+        let average_degree = with_graph_mut!(self, |g| g.get_average_degree(directed));
         return Ok(average_degree);
     }
 
     pub fn get_degree_distribution(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let mut inner = self.inner.borrow_mut();
-        let distribution_snapshot = inner.get_degree_distribution();
+        let distribution_snapshot = with_graph_mut!(self, |g| g.get_degree_distribution());
         let distribution = PyDict::new(py);
 
         for (key, value) in distribution_snapshot.iter() {
@@ -158,8 +265,7 @@ impl Graph {
     }
 
     pub fn compute_entropy(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let mut inner = self.inner.borrow_mut();
-        let entropy_snapshot = inner.compute_entropy();
+        let entropy_snapshot = with_graph_mut!(self, |g| g.compute_entropy());
         let entropy = PyDict::new(py);
 
         for (key, value) in entropy_snapshot.iter() {
@@ -170,13 +276,12 @@ impl Graph {
     }
 
     pub fn get_max_possible_entropy(&mut self) -> PyResult<f64> {
-        let result = self.inner.borrow_mut().get_max_possible_entropy();
+        let result = with_graph_mut!(self, |g| g.get_max_possible_entropy());
         return Ok(result);
     }
 
     pub fn get_skewness(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let mut inner = self.inner.borrow_mut();
-        let skewness_snapshot = inner.get_skewness();
+        let skewness_snapshot = with_graph_mut!(self, |g| g.get_skewness());
         let skewness = PyDict::new(py);
 
         for (key, value) in skewness_snapshot.iter() {
@@ -187,18 +292,17 @@ impl Graph {
     }
 
     pub fn dfs(&mut self, start_node_label: &str) -> Vec<String> {
-        let elements = self.inner.borrow_mut().dfs(start_node_label);
+        let elements = with_graph_mut!(self, |g| g.dfs(start_node_label));
         return elements;
     }
 
     pub fn bfs(&mut self, start_node_label: &str) -> Vec<String> {
-        let elements = self.inner.borrow_mut().bfs(start_node_label);
+        let elements = with_graph_mut!(self, |g| g.bfs(start_node_label));
         return elements;
     }
 
     pub fn dijkstra(&self, start_node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let mut inner = self.inner.borrow_mut();
-        let dijkstra_snapshot = inner.dijkstra(start_node_label);
+        let dijkstra_snapshot = with_graph_mut!(self, |g| g.dijkstra(start_node_label));
         let dijkstra = PyDict::new(py);
 
         for (key, value) in dijkstra_snapshot.iter() {
@@ -215,7 +319,7 @@ impl Graph {
             None => GraphStyle::default()
         };
 
-        let svg_str = self.inner.borrow_mut().output_svg(layout, override_positions, graph_style);
+        let svg_str = with_graph_mut!(self, |g| g.output_svg(layout, override_positions, graph_style));
 
         return svg_str;
     }
@@ -227,68 +331,55 @@ impl Graph {
              None => GraphStyle::default()
          };
 
-         let mut inner = self.inner.borrow_mut();
-
-         inner.output_html(file_name, layout, override_positions, graph_style);
+         with_graph_mut!(self, |g| g.output_html(file_name, layout, override_positions, graph_style));
 
          return Ok(());
      }
 
      pub fn output_net_file(&mut self, file_name: &str) -> PyResult<()> {
-         let mut inner = self.inner.borrow_mut();
-
-         inner.output_net_file(file_name);
-
+         with_graph_mut!(self, |g| g.output_net_file(file_name));
          return Ok(());
      }
 
      pub fn output_json_file(&mut self, file_name: &str) -> PyResult<()> {
-         let mut inner = self.inner.borrow_mut();
-
-         inner.output_json_file(file_name);
-
+         with_graph_mut!(self, |g| g.output_json_file(file_name));
          return Ok(());
      }
 
     #[getter]
     fn nodes(&self) -> Vec<Node> {
-        self.inner.borrow().nodes.iter()
-            .map(|rc_node| Node { inner: rc_node.clone() })
-            .collect()
+        with_graph!(self, |g| {
+            g.metadata.node_info.iter()
+                .map(|node_val| Node { inner: node_val.clone() })
+                .collect()
+        })
     }
 
     #[getter]
     fn build_time_ms(&self) -> Option<f64> {
-        self.inner.borrow().build_time_ms
+        with_graph!(self, |g| g.build_time_ms)
     }
 
     #[staticmethod]
-    #[pyo3(signature = (adj_matrix, directed=false, custom_labels=None))]
-    fn from_adjacency_matrix(adj_matrix: Vec<Vec<f32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>) -> Graph {
-        let graph = _Graph::from_adjacency_matrix(adj_matrix, directed, custom_labels);
-        return Graph {
-            inner: Rc::new(RefCell::new(graph)),
-        }
+    #[pyo3(signature = (adj_matrix, directed=false, custom_labels=None, structure=None))]
+    fn from_adjacency_matrix(adj_matrix: Vec<Vec<f32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
+        return make_graph!(structure, |S| _Graph::<S>::from_adjacency_matrix(adj_matrix, directed, custom_labels));
     }
 
     #[staticmethod]
-    fn from_net_file(file_path: &str) -> Graph {
-        let graph = _Graph::from_net_file(file_path);
-        return Graph {
-            inner: Rc::new(RefCell::new(graph)),
-        }
+    #[pyo3(signature = (file_path, structure=None))]
+    fn from_net_file(file_path: &str, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
+        return make_graph!(structure, |S| _Graph::<S>::from_net_file(file_path));
     }
 
     #[staticmethod]
-    fn from_json_file(file_path: &str) -> Graph {
-        let graph = _Graph::from_json_file(file_path);
-        return Graph {
-            inner: Rc::new(RefCell::new(graph)),
-        }
+    #[pyo3(signature = (file_path, structure=None))]
+    fn from_json_file(file_path: &str, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
+        return make_graph!(structure, |S| _Graph::<S>::from_json_file(file_path));
     }
 
     #[staticmethod]
-    #[pyo3(signature = (api_key, graph_type, search=None, author=None, author_id=None, author_orcid=None, keyword=None, limit=None, min_weight=None, save_json_path=None))]
+    #[pyo3(signature = (api_key, graph_type, search=None, author=None, author_id=None, author_orcid=None, keyword=None, limit=None, min_weight=None, save_json_path=None, structure=None))]
     fn from_openalex(
         api_key: &str,
         graph_type: OpenAlexGraphType,
@@ -299,10 +390,10 @@ impl Graph {
         keyword: Option<&str>,
         limit: Option<usize>,
         min_weight: Option<f32>,
-        save_json_path: Option<&str>
+        save_json_path: Option<&str>,
+        structure: Option<crate::graph_py::py_graph::GraphStructureType>
     ) -> Graph {
-
-        let graph = _Graph::from_openalex(
+        return make_graph!(structure, |S| _Graph::<S>::from_openalex(
             search,
             author,
             author_id,
@@ -313,10 +404,6 @@ impl Graph {
             limit,
             min_weight,
             save_json_path
-        );
-
-        Graph {
-            inner: Rc::new(RefCell::new(graph)),
-        }
+        ));
     }
 }

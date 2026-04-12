@@ -1,6 +1,4 @@
 use pyo3::prelude::*;
-use std::cell::RefCell;
-use std::rc::{Rc};
 use crate::graph_core::node::_Node;
 use pyo3_stub_gen::derive::gen_stub_pyclass;
 
@@ -8,7 +6,7 @@ use pyo3_stub_gen::derive::gen_stub_pyclass;
 #[pyclass(unsendable, module="netfog")]
 #[derive(Clone)]
 pub struct Node {
-    pub inner: Rc<RefCell<_Node>>,
+    pub inner: _Node,
 }
 
 #[pymethods]
@@ -16,32 +14,26 @@ impl Node {
     #[new]
     fn new(label: String) -> Self {
         Node {
-            inner: Rc::new(RefCell::new(_Node {
+            inner: _Node {
                 label,
-                connections: Vec::new(),
                 x: None,
                 y: None,
                 index: None
-            })),
+            },
         }
     }
 
-    fn add_connection(&self, node: &Node, weight: f32, directed: Option<bool>) {
-        self.inner.borrow_mut().add_connection(node.inner.clone(), weight, directed);
-    }
-
     fn __repr__(&self) -> PyResult<String> {
-        return Ok(format!("Node(\"{}\")", self.label()));
+        return Ok(format!("Node(\"{}\")", self.inner.label));
     }
 
     #[getter]
     fn label(&self) -> String {
-        self.inner.borrow().label.clone()
+        self.inner.label.clone()
     }
 
     #[getter]
     fn id(&self) -> Option<usize> {
-        self.inner.borrow().index
+        self.inner.index
     }
-
 }
