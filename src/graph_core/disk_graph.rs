@@ -164,51 +164,65 @@ impl DiskGraph {
             return;
         }
 
-        state.write_buffer.sort_by_key(|e| (e.from, e.to_index()));
+        let new_edges = std::mem::take(&mut state.write_buffer);
 
-        let mut current_edges = Vec::new();
-        let edge_bytes = &state.edges_mmap[..];
-        for i in 0..(edge_bytes.len() / 12) {
-            let offset = i * 12;
-            let mut edge = Edge { from: 0, to: 0, weight: 0.0 };
-            unsafe {
-                std::ptr::copy_nonoverlapping(
-                    edge_bytes[offset..offset + 12].as_ptr(),
-                    &mut edge as *mut Edge as *mut u8,
-                    12,
-                );
-            }
+        let capacity = state.edges_mmap.len() / 12;
+        let disk_edges = unsafe {
+            std::slice::from_raw_parts_mut(
+                state.edges_mmap.as_mut_ptr() as *mut Edge,
+                capacity,
+            )
+        };
+
+        let mut valid_count = 0;
+        for i in 0..capacity {
+            let edge = disk_edges[i];
             if edge.from != 0 || edge.to != 0 || edge.weight != 0.0 {
-                current_edges.push(edge);
+                if i != valid_count {
+                    disk_edges[valid_count] = edge;
+                }
+                valid_count += 1;
             }
         }
 
-        current_edges.extend(state.write_buffer.drain(..));
-        current_edges.sort_by_key(|e| (e.from, e.to_index()));
+        let required_total_edges = valid_count + new_edges.len();
+        let required_bytes = required_total_edges * 12;
 
-        let required_edge_bytes = current_edges.len() * 12;
-        if state.edges_mmap.len() < required_edge_bytes {
-            state.edges_file.set_len(required_edge_bytes as u64).unwrap();
+        if state.edges_mmap.len() < required_bytes {
+            state.edges_file.set_len(required_bytes as u64).unwrap();
             state.edges_mmap = unsafe { MmapMut::map_mut(&state.edges_file).unwrap() };
         }
 
-        for (i, edge) in current_edges.iter().enumerate() {
-            let offset = i * 12;
-            let bytes = unsafe { std::slice::from_raw_parts(edge as *const Edge as *const u8, 12) };
-            state.edges_mmap[offset..offset + 12].copy_from_slice(bytes);
+        let active_disk_edges = unsafe {
+            std::slice::from_raw_parts_mut(
+                state.edges_mmap.as_mut_ptr() as *mut Edge,
+                required_total_edges,
+            )
+        };
+
+        for (i, edge) in new_edges.iter().enumerate() {
+            active_disk_edges[valid_count + i] = *edge;
         }
 
-        let required_nodes = current_edges.last().map(|e| e.from.max(e.to_index()) as usize + 1).unwrap_or(self.node_count);
+        active_disk_edges.sort_unstable_by_key(|e| (e.from, e.to_index()));
+
+        let required_nodes = active_disk_edges
+            .last()
+            .map(|e| e.from.max(e.to_index()) as usize + 1)
+            .unwrap_or(self.node_count);
+
         let offsets_len = (required_nodes + 2) * 8;
+
         if state.offsets_mmap.len() < offsets_len {
-            state.offsets_file.set_len(offsets_len as u64).unwrap();
+            let new_len = offsets_len.max(state.offsets_mmap.len() * 2).max(1024);
+            state.offsets_file.set_len(new_len as u64).unwrap();
             state.offsets_mmap = unsafe { MmapMut::map_mut(&state.offsets_file).unwrap() };
         }
 
         let mut current_node = 0;
         let mut byte_offset: u64 = 0;
 
-        for (i, edge) in current_edges.iter().enumerate() {
+        for edge in active_disk_edges.iter() {
             while current_node < edge.from as usize {
                 let offset_pos = current_node * 8;
                 let bytes = byte_offset.to_le_bytes();
@@ -277,7 +291,8 @@ impl IGraphStructure for DiskGraph {
         let mut state = self.disk_state.borrow_mut();
         let offsets_len = (self.node_count + 2) * 8;
         if state.offsets_mmap.len() < offsets_len {
-            state.offsets_file.set_len(offsets_len as u64).unwrap();
+            let new_len = offsets_len.max(state.offsets_mmap.len() * 2).max(1024);
+            state.offsets_file.set_len(new_len as u64).unwrap();
             state.offsets_mmap = unsafe { MmapMut::map_mut(&state.offsets_file).unwrap() };
         }
 
@@ -452,6 +467,26 @@ impl IGraphStructure for DiskGraph {
 
     fn resolve_label(&self, id: usize) -> Option<String> {
         return self.get_label(id);
+    }
+
+    fn manages_labels(&self) -> bool { true }
+
+    fn set_node_label(&mut self, id: usize, label: &str) {
+        self.set_label(id, label);
+    }
+
+    fn get_id_by_label(&self, label: &str) -> Option<usize> {
+        self.get_id(label)
+    }
+
+    fn manages_positions(&self) -> bool { true }
+
+    fn set_node_position(&mut self, id: usize, x: f64, y: f64) {
+        self.set_layout(id, [x, y]);
+    }
+
+    fn get_node_position(&self, id: usize) -> Option<(f64, f64)> {
+        self.get_layout(id).map(|[x, y]| (x, y))
     }
 }
 

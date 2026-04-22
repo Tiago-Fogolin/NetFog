@@ -179,7 +179,21 @@ impl Graph {
             g.add_node(label.clone());
         });
         let node_val = with_graph!(self, |g| {
-            g.metadata.node_info.last().unwrap().clone()
+            if g.structure.manages_labels() {
+                let idx = g.structure.get_id_by_label(&label)
+                    .unwrap_or_else(|| g.get_node_count().saturating_sub(1));
+                let (x, y) = g.structure.get_node_position(idx)
+                    .map(|(px, py)| (Some(px), Some(py)))
+                    .unwrap_or((None, None));
+                crate::graph_core::node::_Node {
+                    label: label.clone(),
+                    index: Some(idx),
+                    x,
+                    y,
+                }
+            } else {
+                g.metadata.node_info.last().unwrap().clone()
+            }
         });
         let node = Node { inner: node_val };
         return Py::new(py, node);
@@ -199,7 +213,21 @@ impl Graph {
 
     fn node_by_label(&self, node_label: &str, py: Python<'_>) ->  PyResult<Py<Node>> {
         let node_val_opt = with_graph!(self, |g| {
-            g.metadata.label_id_map.get(node_label).map(|&idx| g.metadata.node_info[idx].clone())
+            if g.structure.manages_labels() {
+                g.structure.get_id_by_label(node_label).map(|idx| {
+                    let (x, y) = g.structure.get_node_position(idx)
+                        .map(|(px, py)| (Some(px), Some(py)))
+                        .unwrap_or((None, None));
+                    crate::graph_core::node::_Node {
+                        label: node_label.to_string(),
+                        index: Some(idx),
+                        x,
+                        y,
+                    }
+                })
+            } else {
+                g.metadata.label_id_map.get(node_label).map(|&idx| g.metadata.node_info[idx].clone())
+            }
         });
 
         if let Some(node_val) = node_val_opt {
@@ -237,7 +265,7 @@ impl Graph {
         return Ok(with_graph_mut!(self, |g| g.generate_adjacency_matrix()));
     }
 
-    fn get_total_weight(&self) -> PyResult<f32> {
+    fn get_total_weight(&self) -> PyResult<f64> {
         return Ok(with_graph_mut!(self, |g| g.get_total_weight()));
     }
 
@@ -403,22 +431,10 @@ impl Graph {
     #[getter]
     fn nodes(&self) -> Vec<Node> {
         with_graph!(self, |g| {
-            let count = g.get_node_count();
-            if g.metadata.node_info.len() == count {
-                g.metadata.node_info.iter()
-                    .map(|node_val| Node { inner: node_val.clone() })
-                    .collect()
-            } else {
-                (0..count).map(|i| {
-                    let node_val = crate::graph_core::node::_Node {
-                        label: g.resolve_label(i),
-                        index: Some(i),
-                        x: None,
-                        y: None,
-                    };
-                    Node { inner: node_val }
-                }).collect()
-            }
+            g.get_nodes_for_render()
+                .into_iter()
+                .map(|node_val| Node { inner: node_val })
+                .collect()
         })
     }
 

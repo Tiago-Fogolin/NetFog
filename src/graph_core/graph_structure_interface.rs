@@ -16,4 +16,20 @@ pub trait IGraphStructure {
     fn resolve_label(&self, _id: usize) -> Option<String> {
         return None;
     }
+
+    /// Returns true if this structure manages label↔id mappings internally (e.g. on disk).
+    /// When true, _Graph will NOT write to GraphMetadata for labels.
+    fn manages_labels(&self) -> bool { false }
+
+    fn set_node_label(&mut self, _id: usize, _label: &str) {}
+
+    fn get_id_by_label(&self, _label: &str) -> Option<usize> { None }
+
+    /// Returns true if this structure manages node positions internally (e.g. on disk).
+    /// When true, _Graph will NOT write positions to GraphMetadata.
+    fn manages_positions(&self) -> bool { false }
+
+    fn set_node_position(&mut self, _id: usize, _x: f64, _y: f64) {}
+
+    fn get_node_position(&self, _id: usize) -> Option<(f64, f64)> { None }
 }
