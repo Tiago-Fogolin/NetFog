@@ -26,7 +26,7 @@ fn test_from_openalex_api() {
 }
 
 #[test]
-// #[ignore]
+#[ignore]
 fn test_from_overpass_api() {
     let style = GraphStyle::default();
     let mut g = TestGraph::from_overpass_address("Rua Paulo da Cunha Mattos".to_string(), 20.0);

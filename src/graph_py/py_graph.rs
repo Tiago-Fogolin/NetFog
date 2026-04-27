@@ -12,8 +12,9 @@ use crate::graph_py::py_node::Node;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
 use crate::external_apis::core::OpenAlexGraphType;
-use crate::external_apis::overpass::make_overpass_disk_graph;
-use crate::external_apis::nominatin::get_point_from_address;
+use crate::external_apis::openalex::dispatch_openalex_disk_graph_creation;
+use crate::file_reader_core::net_file_streaming::read_net_file_streaming_disk;
+use crate::file_reader_core::json_streaming::read_json_file_streaming_disk;
 use pyo3::types::PyDict;
 use pyo3_stub_gen::derive::gen_stub_pyclass;
 
@@ -455,12 +456,20 @@ impl Graph {
     #[staticmethod]
     #[pyo3(signature = (file_path, structure=None))]
     fn from_net_file(file_path: &str, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
+        if structure == Some(GraphStructureType::DiskGraph) {
+            let graph = read_net_file_streaming_disk(file_path).expect("Failed to read .net file");
+            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
+        }
         return make_graph!(structure, |S| _Graph::<S>::from_net_file(file_path));
     }
 
     #[staticmethod]
     #[pyo3(signature = (file_path, structure=None))]
     fn from_json_file(file_path: &str, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
+        if structure == Some(GraphStructureType::DiskGraph) {
+            let graph = read_json_file_streaming_disk(file_path).expect("Failed to read .json file");
+            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
+        }
         return make_graph!(structure, |S| _Graph::<S>::from_json_file(file_path));
     }
 
@@ -479,6 +488,20 @@ impl Graph {
         save_json_path: Option<&str>,
         structure: Option<crate::graph_py::py_graph::GraphStructureType>
     ) -> Graph {
+        if structure == Some(GraphStructureType::DiskGraph) {
+            let graph = dispatch_openalex_disk_graph_creation(
+                search,
+                author,
+                author_id,
+                author_orcid,
+                keyword,
+                graph_type,
+                api_key,
+                limit,
+                min_weight,
+            );
+            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
+        }
         return make_graph!(structure, |S| _Graph::<S>::from_openalex(
             search,
             author,
@@ -500,17 +523,10 @@ impl Graph {
         radius: f64,
         structure: Option<crate::graph_py::py_graph::GraphStructureType>
     ) -> Graph {
-        let structure = structure.unwrap_or(GraphStructureType::AdjacencyList);
-        match structure {
-            GraphStructureType::DiskGraph => {
-                let point = get_point_from_address(address)
-                    .expect("Request to Nominatim failed!");
-                let graph = make_overpass_disk_graph(radius, point);
-                return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
-            },
-            other => {
-                return make_graph!(Some(other), |S| _Graph::<S>::from_overpass_address(address.clone(), radius));
-            }
+        if structure == Some(GraphStructureType::DiskGraph) {
+            let graph = _Graph::<DiskGraph>::from_overpass_address_disk(address, radius);
+            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
         }
+        return make_graph!(structure, |S| _Graph::<S>::from_overpass_address(address.clone(), radius));
     }
 }
