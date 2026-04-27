@@ -322,18 +322,22 @@ impl IGraphStructure for PackedCompressedSparseRow {
         for &(f, t, w, d) in connections { self.create_connection(f, t, w, Some(d)); }
     }
 
-    fn get_all_edges(&self) -> Box<dyn Iterator<Item = (usize, usize, f32, bool)>> {
-        let mut edges = Vec::new();
-        for i in 0..self.nodes.len() {
+    fn get_all_edges(&self) -> impl Iterator<Item = (usize, usize, f32, bool)> + '_ {
+        return (0..self.nodes.len()).flat_map(move |i| {
             let node = self.nodes[i];
-            for j in node.beginning + 1..node.end.min(self.n) {
+            (node.beginning + 1..node.end.min(self.n)).filter_map(move |j| {
                 let e = self.edges[j as usize];
-                if !e.is_null() && !e.is_sentinel() {
-                    if e.directed { edges.push((i, e.dest as usize, e.weight, true)); }
-                    else if i <= e.dest as usize { edges.push((i, e.dest as usize, e.weight, false)); }
+                if e.is_null() || e.is_sentinel() {
+                    return None;
                 }
-            }
-        }
-        Box::new(edges.into_iter())
+                if e.directed {
+                    return Some((i, e.dest as usize, e.weight, true));
+                }
+                if i <= e.dest as usize {
+                    return Some((i, e.dest as usize, e.weight, false));
+                }
+                return None;
+            })
+        });
     }
 }

@@ -158,7 +158,7 @@ impl DiskGraph {
         return Some(result);
     }
 
-    fn flush_to_disk(&self) {
+    pub fn flush_to_disk(&self) {
         let mut state = self.disk_state.borrow_mut();
         if state.write_buffer.is_empty() {
             return;
@@ -454,15 +454,14 @@ impl IGraphStructure for DiskGraph {
         }
     }
 
-    fn get_all_edges(&self) -> Box<dyn Iterator<Item = (usize, usize, f32, bool)>> {
+    fn get_all_edges(&self) -> impl Iterator<Item = (usize, usize, f32, bool)> + '_ {
         self.flush_to_disk();
         let max_index = self.disk_state.borrow().edges_mmap.len() / 12;
-        let it = DiskGraphEdgeIterator {
+        return DiskGraphEdgeIterator {
             state: self.disk_state.clone(),
             current_index: 0,
             max_index,
         };
-        return Box::new(it);
     }
 
     fn resolve_label(&self, id: usize) -> Option<String> {
@@ -478,6 +477,8 @@ impl IGraphStructure for DiskGraph {
     fn get_id_by_label(&self, label: &str) -> Option<usize> {
         self.get_id(label)
     }
+
+    fn is_disk_based(&self) -> bool { return true; }
 
     fn manages_positions(&self) -> bool { true }
 

@@ -150,25 +150,25 @@ impl IGraphStructure for CompressedSparseRow {
         }
     }
     
-    fn get_all_edges(&self) -> Box<dyn Iterator<Item = (usize, usize, f32, bool)>> {
-        let mut edges = Vec::new();
-        for i in 0..self.node_count {
+    fn get_all_edges(&self) -> impl Iterator<Item = (usize, usize, f32, bool)> + '_ {
+        return (0..self.node_count).flat_map(move |i| {
             let start = self.offsets[i];
             let end = self.offsets[i + 1];
-            for j in start..end {
+            (start..end).filter_map(move |j| {
                 let tgt = self.edges[j];
                 let weight = self.weights[j];
                 let directed = self.directed_flags[j];
-                if weight != 0.0 {
-                    if directed {
-                        edges.push((i, tgt, weight, true));
-                    } else if i <= tgt {
-                        edges.push((i, tgt, weight, false));
-                    }
+                if weight == 0.0 {
+                    return None;
                 }
-            }
-        }
-        
-        return Box::new(edges.into_iter());
+                if directed {
+                    return Some((i, tgt, weight, true));
+                }
+                if i <= tgt {
+                    return Some((i, tgt, weight, false));
+                }
+                return None;
+            })
+        });
     }
 }

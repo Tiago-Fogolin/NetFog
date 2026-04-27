@@ -7,13 +7,16 @@ use std::time::Instant;
 use std::{collections::HashMap, collections::HashSet, collections::VecDeque};
 use crate::graph_core::graph_metadata::GraphMetadata;
 use crate::graph_core::graph_structure_interface::IGraphStructure;
-use crate::graph_core::adjacency_matrix::AdjacencyMatrix;
 use crate::graph_core::adjacency_list::AdjacencyList;
 use crate::svg_creation::svg_creation::Svg;
 use crate::layout::layout::{Layout, get_layout_function};
 use crate::file_reader_core::file_reader::{read_json_file, read_net_file};
-use crate::external_apis::core::{OpenAlexGraphType};
+use crate::external_apis::core::{OpenAlexGraphType, NominatimResponse};
 use crate::external_apis::openalex::dispatch_openalex_graph_creation;
+use crate::external_apis::nominatin::get_point_from_address;
+use crate::external_apis::overpass::make_overpass_graph;
+use crate::external_apis::overpass::make_overpass_disk_graph;
+use crate::graph_core::disk_graph::DiskGraph;
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -808,5 +811,19 @@ impl<S: IGraphStructure + Default> _Graph<S> {
         );
 
         return graph;
+    }
+
+    pub fn from_overpass_address(address: String, radius: f64) -> Self {
+        let point = get_point_from_address(address).expect("Request to Nominatim failed!");
+        let graph = make_overpass_graph(radius, point);
+
+        return graph;
+    }
+}
+
+impl _Graph<DiskGraph> {
+    pub fn from_overpass_address_disk(address: String, radius: f64) -> Self {
+        let point = get_point_from_address(address).expect("Request to Nominatim failed!");
+        return make_overpass_disk_graph(radius, point);
     }
 }

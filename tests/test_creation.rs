@@ -1,5 +1,7 @@
-use netfog::*;
-use netfog::TestGraph as _Graph;
+use netfog::graph_core::adjacency_list::AdjacencyList;
+use netfog::graph_core::adjacency_matrix::AdjacencyMatrix;
+use netfog::{_Graph, *};
+use netfog::TestGraph;
 use std::collections::HashMap;
 use crate::external_apis::core::{OpenAlexGraphType};
 use netfog::layout::style::GraphStyle;
@@ -16,11 +18,20 @@ fn make_conn(from: &str, to: &str, weight: f32, directed: bool) -> HashMap<Strin
 
 #[test]
 #[ignore]
-fn test_from_api() {
+fn test_from_openalex_api() {
     let style = GraphStyle::default();
-    let mut g = _Graph::from_openalex(None,None,None,None, Some("TEST"), OpenAlexGraphType::Coauthorship, "YOUR_API_KEY", Some(10), Some(1.), None);
+    let mut g = TestGraph::from_openalex(None,None,None,None, Some("TEST"), OpenAlexGraphType::Coauthorship, "YOUR_API_KEY", Some(10), Some(1.), None);
     g.output_html("teste_open_alex_mock.html", Layout::Spring, true, style);
     std::fs::remove_file("teste_open_alex_mock.html").ok();
+}
+
+#[test]
+// #[ignore]
+fn test_from_overpass_api() {
+    let style = GraphStyle::default();
+    let mut g = TestGraph::from_overpass_address("Rua Paulo da Cunha Mattos".to_string(), 20.0);
+    g.output_html("teste_overpass_mock.html", Layout::Random, false, style);
+    // std::fs::remove_file("teste_overpass_mock.html").ok();
 }
 
 #[test]
@@ -32,7 +43,7 @@ fn test_from_adjacency_matrix() {
         vec![1., 0.],
     ];
 
-    let mut graph = _Graph::from_adjacency_matrix(
+    let mut graph = TestGraph::from_adjacency_matrix(
         adj_matrix,
         Some(false),
         Some(vec!["one".to_string(), "two".to_string()]),
@@ -44,14 +55,14 @@ fn test_from_adjacency_matrix() {
 
     assert_eq!(connections, graph.get_connections(None, None, false));
 
-    // Segundo grafo
+
     let adj_matrix2 = vec![
         vec![0., 2., 1.],
         vec![1., 0., 3.],
         vec![1., 2., 0.],
     ];
 
-    let mut graph2 = _Graph::from_adjacency_matrix(
+    let mut graph2 = TestGraph::from_adjacency_matrix(
         adj_matrix2,
         Some(true),
         Some(vec![
@@ -81,7 +92,7 @@ fn test_generate_adjacency_matrix() {
         vec![1., 3., 0.],
     ];
 
-    let mut graph = _Graph::from_adjacency_matrix(adj_matrix.clone(), Some(false), None);
+    let mut graph = TestGraph::from_adjacency_matrix(adj_matrix.clone(), Some(false), None);
 
     let generated_adj_matrix = graph.generate_adjacency_matrix();
 

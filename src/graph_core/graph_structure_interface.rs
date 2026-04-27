@@ -11,7 +11,7 @@ pub trait IGraphStructure {
     fn batch_add_nodes(&mut self, count: usize);
     fn batch_create_connections(&mut self, connections: &[(usize, usize, f32, bool)]);
     
-    fn get_all_edges(&self) -> Box<dyn Iterator<Item = (usize, usize, f32, bool)>>;
+    fn get_all_edges(&self) -> impl Iterator<Item = (usize, usize, f32, bool)> + '_;
 
     fn resolve_label(&self, _id: usize) -> Option<String> {
         return None;
@@ -32,4 +32,8 @@ pub trait IGraphStructure {
     fn set_node_position(&mut self, _id: usize, _x: f64, _y: f64) {}
 
     fn get_node_position(&self, _id: usize) -> Option<(f64, f64)> { None }
+
+    /// Returns true if this structure is backed by disk (e.g. DiskGraph).
+    /// When true, the dispatcher routes to disk-based ETL pipelines.
+    fn is_disk_based(&self) -> bool { return false; }
 }

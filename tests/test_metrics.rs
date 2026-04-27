@@ -23,6 +23,8 @@ fn create_simple_graph() -> _Graph {
 
 #[test]
 fn test_total_weight() {
+    let epsilon = 1e-5;
+
     let mut graph = _Graph::default();
     graph.add_node("node1".to_string());
     graph.add_node("node2".to_string());
@@ -36,7 +38,9 @@ fn test_total_weight() {
 
 
     let total_weight = 2.0 + 4.0 + 5.5 + 1.6;
-    assert_eq!(total_weight, graph.get_total_weight());
+    assert!(
+        (total_weight - graph.get_total_weight()).abs() < epsilon
+    );
 }
 
 #[test]

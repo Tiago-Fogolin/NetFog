@@ -12,6 +12,8 @@ use crate::graph_py::py_node::Node;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
 use crate::external_apis::core::OpenAlexGraphType;
+use crate::external_apis::overpass::make_overpass_disk_graph;
+use crate::external_apis::nominatin::get_point_from_address;
 use pyo3::types::PyDict;
 use pyo3_stub_gen::derive::gen_stub_pyclass;
 
@@ -207,8 +209,9 @@ impl Graph {
     }
 
     pub fn get_all_edges(&self) -> PyEdgeIterator {
-        let iter = with_graph!(self, |g| g.structure.get_all_edges());
-        return PyEdgeIterator { inner: iter };
+        let edges: Vec<(usize, usize, f32, bool)> =
+            with_graph!(self, |g| g.structure.get_all_edges().collect());
+        return PyEdgeIterator { inner: Box::new(edges.into_iter()) };
     }
 
     fn node_by_label(&self, node_label: &str, py: Python<'_>) ->  PyResult<Py<Node>> {
@@ -488,5 +491,26 @@ impl Graph {
             min_weight,
             save_json_path
         ));
+    }
+
+    #[staticmethod]
+    #[pyo3(signature = (address, radius, structure=None))]
+    fn from_overpass_address(
+        address: String,
+        radius: f64,
+        structure: Option<crate::graph_py::py_graph::GraphStructureType>
+    ) -> Graph {
+        let structure = structure.unwrap_or(GraphStructureType::AdjacencyList);
+        match structure {
+            GraphStructureType::DiskGraph => {
+                let point = get_point_from_address(address)
+                    .expect("Request to Nominatim failed!");
+                let graph = make_overpass_disk_graph(radius, point);
+                return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
+            },
+            other => {
+                return make_graph!(Some(other), |S| _Graph::<S>::from_overpass_address(address.clone(), radius));
+            }
+        }
     }
 }

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::{collections::{HashMap}};
 use pyo3::prelude::*;
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -57,4 +58,28 @@ pub enum OpenAlexGraphType {
     KeywordCooccurrence,
     WorkCocitation,
     AuthorCocitation,
+}
+
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct NominatimResponse {
+    pub lat: String,
+    pub lon: String
+}
+
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct OverpassElement {
+    #[serde(rename = "type")]
+    pub osm_type: String,
+    pub id: i64,
+    pub lat: Option<f64>,
+    pub lon: Option<f64>,
+    pub nodes: Option<Vec<i64>>,
+    pub tags: Option<HashMap<String, String>>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct OverpassResponse {
+    pub elements: Vec<OverpassElement>
 }

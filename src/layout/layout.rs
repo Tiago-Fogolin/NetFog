@@ -12,6 +12,47 @@ const MIN_HEIGHT:f64 = 20.;
 const SCREEN_CENTER_X:f64 = 800.;
 const SCREEN_CENTER_Y:f64 = 400.;
 
+#[derive(Debug)]
+pub struct BoundingBox {
+    pub min_lat: f64,
+    pub max_lat: f64,
+    pub min_lon: f64,
+    pub max_lon: f64,
+}
+
+impl BoundingBox {
+    pub fn lat_lon_to_screen(&self, lat: f64, lon: f64) -> [f64; 2] {
+        let geo_width = self.max_lon - self.min_lon;
+        let geo_height = self.max_lat - self.min_lat;
+
+        let screen_width = MAX_WIDTH - MIN_WIDTH;
+        let screen_height = MAX_HEIGHT - MIN_HEIGHT;
+
+        if geo_width == 0.0 || geo_height == 0.0 {
+            return [SCREEN_CENTER_X, SCREEN_CENTER_Y];
+        }
+
+        let scale_x = screen_width / geo_width;
+        let scale_y = screen_height / geo_height;
+        let final_scale = scale_x.min(scale_y);
+
+        let raw_x = (lon - self.min_lon) * final_scale;
+
+        let raw_y = (self.max_lat - lat) * final_scale;
+
+        let map_pixel_width = geo_width * final_scale;
+        let map_pixel_height = geo_height * final_scale;
+
+        let offset_x = SCREEN_CENTER_X - (map_pixel_width / 2.0);
+        let offset_y = SCREEN_CENTER_Y - (map_pixel_height / 2.0);
+
+        let final_x = offset_x + raw_x;
+        let final_y = offset_y + raw_y;
+
+        return [final_x, final_y];
+    }
+}
+
 pub fn denormalize_x(x: f64) -> f64 {
     let new_x = x * (MAX_WIDTH - MIN_WIDTH) + MIN_WIDTH;
     return new_x;

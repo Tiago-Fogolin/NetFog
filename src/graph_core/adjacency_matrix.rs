@@ -94,22 +94,20 @@ impl IGraphStructure for AdjacencyMatrix {
 
     }
 
-    fn get_all_edges(&self) -> Box<dyn Iterator<Item = (usize, usize, f32, bool)>> {
-        let mut edges = Vec::new();
-        for i in 0..self.node_count {
-            for j in 0..self.node_count {
-                let (weight, directed) = self.mtz[i][j];
-                if weight != 0.0 {
-                    if directed {
-                        edges.push((i, j, weight, true));
-                    } else {
-                        if i <= j {
-                            edges.push((i, j, weight, false));
-                        }
-                    }
+    fn get_all_edges(&self) -> impl Iterator<Item = (usize, usize, f32, bool)> + '_ {
+        return self.mtz.iter().enumerate().flat_map(|(i, row)| {
+            row.iter().enumerate().filter_map(move |(j, &(weight, directed))| {
+                if weight == 0.0 {
+                    return None;
                 }
-            }
-        }
-        return Box::new(edges.into_iter());
+                if directed {
+                    return Some((i, j, weight, true));
+                }
+                if i <= j {
+                    return Some((i, j, weight, false));
+                }
+                return None;
+            })
+        });
     }
 }
