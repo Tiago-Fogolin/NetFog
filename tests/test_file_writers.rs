@@ -1,4 +1,4 @@
-use netfog::file_reader_core::file_reader::read_json_file;
+use netfog::file_reader_core::file_reader::{read_edge_list_file, read_json_file, read_mtx_file};
 use netfog::{HtmlWriter, Writeable};
 use netfog::TestGraph as _Graph;
 use netfog::layout::layout::Layout;
@@ -67,4 +67,26 @@ fn test_output_json_file() {
     assert_eq!(graph2.get_node_count(), 4);
 
     std::fs::remove_file("mock_output.json").ok();
+}
+
+#[test]
+fn test_output_mtx_file() {
+    let mut graph = create_simple_graph();
+    graph.output_mtx_file("mock_output.mtx");
+    let mut graph2: _Graph = read_mtx_file("mock_output.mtx").expect("Failed to read .mtx file");
+    assert_eq!(graph2.get_node_count(), 4);
+    assert_eq!(graph2.get_edge_count(), graph.get_edge_count());
+
+    std::fs::remove_file("mock_output.mtx").ok();
+}
+
+#[test]
+fn test_output_edge_list_file() {
+    let mut graph = create_simple_graph();
+    graph.output_edge_list_file("mock_output_edges.txt");
+    let mut graph2: _Graph = read_edge_list_file("mock_output_edges.txt", false).expect("Failed to read edge list file");
+    assert_eq!(graph2.get_node_count(), graph.get_node_count());
+    assert_eq!(graph2.get_edge_count(), graph.get_edge_count());
+
+    std::fs::remove_file("mock_output_edges.txt").ok();
 }

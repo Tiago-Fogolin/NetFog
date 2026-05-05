@@ -13,8 +13,11 @@ use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
 use crate::external_apis::core::OpenAlexGraphType;
 use crate::external_apis::openalex::dispatch_openalex_disk_graph_creation;
+use crate::file_reader_core::edge_list_streaming::read_edge_list_file_streaming_disk;
 use crate::file_reader_core::net_file_streaming::read_net_file_streaming_disk;
 use crate::file_reader_core::json_streaming::read_json_file_streaming_disk;
+use crate::file_reader_core::mtx_streaming::read_mtx_file_streaming_disk;
+use crate::synthetic_graphs::core::{SyntheticGraphType, PySyntheticGraphType};
 use pyo3::types::PyDict;
 use pyo3_stub_gen::derive::gen_stub_pyclass;
 
@@ -432,6 +435,16 @@ impl Graph {
          return Ok(());
      }
 
+     pub fn output_mtx_file(&mut self, file_name: &str) -> PyResult<()> {
+         with_graph_mut!(self, |g| g.output_mtx_file(file_name));
+         return Ok(());
+     }
+
+     pub fn output_edge_list_file(&mut self, file_name: &str) -> PyResult<()> {
+         with_graph_mut!(self, |g| g.output_edge_list_file(file_name));
+         return Ok(());
+     }
+
     #[getter]
     fn nodes(&self) -> Vec<Node> {
         with_graph!(self, |g| {
@@ -471,6 +484,26 @@ impl Graph {
             return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
         }
         return make_graph!(structure, |S| _Graph::<S>::from_json_file(file_path));
+    }
+
+    #[staticmethod]
+    #[pyo3(signature = (file_path, structure=None))]
+    fn from_mtx_file(file_path: &str, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
+        if structure == Some(GraphStructureType::DiskGraph) {
+            let graph = read_mtx_file_streaming_disk(file_path).expect("Failed to read .mtx file");
+            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
+        }
+        return make_graph!(structure, |S| _Graph::<S>::from_mtx_file(file_path));
+    }
+
+    #[staticmethod]
+    #[pyo3(signature = (file_path, directed=false, structure=None))]
+    fn from_edge_list_file(file_path: &str, directed: bool, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
+        if structure == Some(GraphStructureType::DiskGraph) {
+            let graph = read_edge_list_file_streaming_disk(file_path, directed).expect("Failed to read edge list file");
+            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
+        }
+        return make_graph!(structure, |S| _Graph::<S>::from_edge_list_file(file_path, directed));
     }
 
     #[staticmethod]
@@ -528,5 +561,14 @@ impl Graph {
             return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
         }
         return make_graph!(structure, |S| _Graph::<S>::from_overpass_address(address.clone(), radius));
+    }
+
+    #[staticmethod]
+    #[pyo3(signature = (graph_type, structure=None))]
+    fn from_synthetic(
+        graph_type: PySyntheticGraphType,
+        structure: Option<crate::graph_py::py_graph::GraphStructureType>
+    ) -> Graph {
+        return make_graph!(structure, |S| _Graph::<S>::from_synthetic(graph_type.inner.clone()));
     }
 }

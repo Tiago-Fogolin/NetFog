@@ -1,7 +1,9 @@
 use crate::_Graph;
 use std::io::Error;
 use serde::{Deserialize, Serialize};
+use crate::file_reader_core::edge_list_streaming::read_edge_list_file_streaming;
 use crate::file_reader_core::json_streaming::read_json_file_streaming;
+use crate::file_reader_core::mtx_streaming::read_mtx_file_streaming;
 use crate::file_reader_core::net_file_streaming::read_net_file_streaming;
 
 pub fn read_net_file<S: crate::graph_core::graph_structure_interface::IGraphStructure + Default>(file_path: &str) -> Result<_Graph<S>, Error> {
@@ -31,4 +33,12 @@ pub struct JsonGraph {
 
 pub fn read_json_file<S: crate::graph_core::graph_structure_interface::IGraphStructure + Default>(file_path: &str) -> Result<_Graph<S>, Error> {
     return read_json_file_streaming(file_path);
+}
+
+pub fn read_mtx_file<S: crate::graph_core::graph_structure_interface::IGraphStructure + Default>(file_path: &str) -> Result<_Graph<S>, Error> {
+    return read_mtx_file_streaming(file_path);
+}
+
+pub fn read_edge_list_file<S: crate::graph_core::graph_structure_interface::IGraphStructure + Default>(file_path: &str, directed: bool) -> Result<_Graph<S>, Error> {
+    return read_edge_list_file_streaming(file_path, directed);
 }

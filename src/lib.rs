@@ -5,6 +5,7 @@ pub mod svg_creation;
 pub mod layout;
 pub mod graph_py;
 pub mod external_apis;
+pub mod synthetic_graphs;
 
 pub use graph_core::node::_Node;
 pub use file_writer_core::file_writer::{HtmlWriter, Writeable};
@@ -25,6 +26,7 @@ pub type TestGraph = graph_core::graph::_Graph<graph_core::adjacency_list::Adjac
 pub use graph_core::graph::{ConnectionProperty};
 
 pub use graph_py::py_graph::GraphStructureType;
+pub use synthetic_graphs::core::PySyntheticGraphType;
 pub use graph_py::py_graph::Graph;
 pub use graph_py::py_node::Node;
 use pyo3::prelude::*;
@@ -43,6 +45,7 @@ fn netfog(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Layout>()?;
     m.add_class::<GraphStyle>()?;
     m.add_class::<OpenAlexGraphType>()?;
+    m.add_class::<PySyntheticGraphType>()?;
     Ok(())
 }
 

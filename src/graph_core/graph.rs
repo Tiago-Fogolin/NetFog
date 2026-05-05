@@ -1,16 +1,18 @@
 use crate::layout::style::GraphStyle;
 use crate::{HtmlWriter, Writeable};
 use crate::graph_core::node::_Node;
-use crate::file_writer_core::file_writer::{write_json_file, write_net_file};
+use crate::file_writer_core::file_writer::{write_edge_list_file, write_json_file, write_mtx_file, write_net_file};
 use std::f64;
 use std::time::Instant;
 use std::{collections::HashMap, collections::HashSet, collections::VecDeque};
 use crate::graph_core::graph_metadata::GraphMetadata;
 use crate::graph_core::graph_structure_interface::IGraphStructure;
 use crate::graph_core::adjacency_list::AdjacencyList;
+use crate::synthetic_graphs::core::SyntheticGraphType;
+use crate::synthetic_graphs::{erdos_renyi, barabasi_albert, watts_strogatz};
 use crate::svg_creation::svg_creation::Svg;
 use crate::layout::layout::{Layout, get_layout_function};
-use crate::file_reader_core::file_reader::{read_json_file, read_net_file};
+use crate::file_reader_core::file_reader::{read_edge_list_file, read_json_file, read_mtx_file, read_net_file};
 use crate::external_apis::core::{OpenAlexGraphType, NominatimResponse};
 use crate::external_apis::openalex::dispatch_openalex_graph_creation;
 use crate::external_apis::nominatin::get_point_from_address;
@@ -712,6 +714,17 @@ impl<S: IGraphStructure> _Graph<S> {
         let edges: Vec<(usize, usize, f32, bool)> = self.structure.get_all_edges().collect();
         write_json_file(path, nodes, &edges).expect("Error while creating the file");
     }
+
+    pub fn output_mtx_file(&mut self, path: &str) {
+        let n_nodes = self.structure.node_count();
+        let n_edges = self.get_edge_count();
+        write_mtx_file(path, n_nodes, n_edges, self.structure.get_all_edges()).expect("Error while creating the file");
+    }
+
+    pub fn output_edge_list_file(&mut self, path: &str) {
+        let nodes = self.get_nodes_for_render();
+        write_edge_list_file(path, &nodes, self.structure.get_all_edges()).expect("Error while creating the file");
+    }
 }
 
 
@@ -741,6 +754,30 @@ impl<S: IGraphStructure + Default> _Graph<S> {
         let start = Instant::now();
 
         let mut new_graph = read_json_file(path).expect("Failed to read .json file");
+
+        let duration = start.elapsed();
+
+        new_graph.build_time_ms = Some(duration.as_secs_f64() * 1000.0);
+
+        return new_graph;
+    }
+
+    pub fn from_mtx_file(path: &str) -> Self {
+        let start = Instant::now();
+
+        let mut new_graph = read_mtx_file(path).expect("Failed to read .mtx file");
+
+        let duration = start.elapsed();
+
+        new_graph.build_time_ms = Some(duration.as_secs_f64() * 1000.0);
+
+        return new_graph;
+    }
+
+    pub fn from_edge_list_file(path: &str, directed: bool) -> Self {
+        let start = Instant::now();
+
+        let mut new_graph = read_edge_list_file(path, directed).expect("Failed to read edge list file");
 
         let duration = start.elapsed();
 
@@ -818,6 +855,20 @@ impl<S: IGraphStructure + Default> _Graph<S> {
         let graph = make_overpass_graph(radius, point);
 
         return graph;
+    }
+
+    pub fn from_synthetic(graph_type: SyntheticGraphType) -> Self {
+        match graph_type {
+            SyntheticGraphType::ErdosRenyi { n, p } => {
+                return erdos_renyi::generate_erdos_renyi(n, p);
+            }
+            SyntheticGraphType::BarabasiAlbert { n, m } => {
+                return barabasi_albert::generate_barabasi_albert(n, m);
+            }
+            SyntheticGraphType::WattsStrogatz { n, k, beta } => {
+                return watts_strogatz::generate_watts_strogatz(n, k, beta);
+            }
+        }
     }
 }
 
