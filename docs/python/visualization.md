@@ -13,6 +13,7 @@ Specifies the positioning algorithm for the nodes:
 * **Random**: Positions nodes at random coordinates.
 * **Circular**: Places nodes in a perfect circle.
 * **Spring**: Uses a force-directed algorithm to space nodes out (ideal for identifying clusters).
+* **ForceAtlas2**: Uses the ForceAtlas2 continuous force-directed algorithm, optimised for large and complex networks.
 
 #### `GraphStyle`
 Customizes the visual appearance of the graph. If not provided, a default theme is used.
@@ -36,6 +37,12 @@ Exports the graph structure to a `.net` (Pajek) format, preserving node labels a
 
 - `output_json_file(file_name: str)`  
 Saves the graph as a JSON file, including node coordinates and distinguishing between directed arcs and undirected edges.
+
+- `output_mtx_file(file_name: str)`  
+Exports the graph to a Matrix Market (`.mtx`) file.
+
+- `output_edge_list_file(file_name: str)`  
+Exports the graph as a plain edge-list file, with one edge per line.
 ---
 
 ## Python Examples
@@ -51,7 +58,7 @@ g.output_html("graph_view.html", layout=Layout.Spring)
 
 # 2. Custom Styling
 custom_style = GraphStyle(
-    node_colo="red",
+    node_color="red",
     node_radius=25,
     line_color="blue",
     dynamic_line_size=True
@@ -62,6 +69,10 @@ svg_code = g.output_svg(layout=Layout.Circular, style=custom_style)
 
 # 3. Data Export
 g.output_net_file("exported_data.net")
+g.output_json_file("exported_data.json")
+g.output_mtx_file("exported_data.mtx")
+g.output_edge_list_file("exported_edges.txt")
 ```
 
-[!TIP] **Override Positions**: If your graph already has specific coordinates (e.g., loaded from a file), set override_positions=False to preserve them. Set it to True if you want the Layout algorithm to recalculate new positions.
+> [!TIP]
+> **Override Positions**: If your graph already has specific coordinates (e.g., loaded from a file), set `override_positions=False` to preserve them. Set it to `True` if you want the Layout algorithm to recalculate new positions.
