@@ -250,20 +250,70 @@ impl PackedCompressedSparseRow {
     }
 }
 
+struct PcsrEdgeIter<'a> {
+    pcsr: &'a PackedCompressedSparseRow,
+    node: usize,
+    pos: u32,
+    seen: HashSet<(usize, usize)>,
+}
+
+impl<'a> Iterator for PcsrEdgeIter<'a> {
+    type Item = (usize, usize, f32, bool);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.node >= self.pcsr.nodes.len() {
+                return None;
+            }
+            let node_end = self.pcsr.nodes[self.node].end.min(self.pcsr.n);
+            if self.pos >= node_end {
+                self.node += 1;
+                if self.node < self.pcsr.nodes.len() {
+                    self.pos = self.pcsr.nodes[self.node].beginning + 1;
+                }
+                continue;
+            }
+            let e = self.pcsr.edges[self.pos as usize];
+            self.pos += 1;
+            if e.is_null() || e.is_sentinel() { continue; }
+            if e.directed {
+                if self.seen.insert((self.node, e.dest as usize)) {
+                    return Some((self.node, e.dest as usize, e.weight, true));
+                }
+            } else {
+                let (a, b) = (self.node.min(e.dest as usize), self.node.max(e.dest as usize));
+                if self.seen.insert((a, b)) {
+                    return Some((a, b, e.weight, false));
+                }
+            }
+        }
+    }
+}
+
 impl IGraphStructure for PackedCompressedSparseRow {
     fn add_node(&mut self) -> usize {
         let node_idx = self.nodes.len() as u32;
-        let mut node = Node::default();
-        if node_idx > 0 {
-            node.beginning = self.nodes[node_idx as usize - 1].end.saturating_sub(1);
-            node.end = self.n;
+
+        let loc = if node_idx > 0 {
+            self.find_edge_pos(node_idx - 1, u32::MAX)
         } else {
-            node.beginning = 0;
-            node.end = self.n;
-        }
+            0
+        };
+
+        let mut node = Node::default();
+        node.beginning = loc;
+        node.end = self.n;
+
         self.nodes.push(node);
-        let sentinel = if node_idx == 0 { Edge::sentinel(u32::MAX) } else { Edge::sentinel(node_idx) };
-        self.insert(node.beginning, sentinel, node_idx);
+
+        let sentinel = if node_idx == 0 {
+            Edge::sentinel(u32::MAX)
+        } else {
+            Edge::sentinel(node_idx)
+        };
+
+        self.insert(loc, sentinel, node_idx);
+
         node_idx as usize
     }
 
@@ -323,21 +373,11 @@ impl IGraphStructure for PackedCompressedSparseRow {
     }
 
     fn get_all_edges(&self) -> impl Iterator<Item = (usize, usize, f32, bool)> + '_ {
-        return (0..self.nodes.len()).flat_map(move |i| {
-            let node = self.nodes[i];
-            (node.beginning + 1..node.end.min(self.n)).filter_map(move |j| {
-                let e = self.edges[j as usize];
-                if e.is_null() || e.is_sentinel() {
-                    return None;
-                }
-                if e.directed {
-                    return Some((i, e.dest as usize, e.weight, true));
-                }
-                if i <= e.dest as usize {
-                    return Some((i, e.dest as usize, e.weight, false));
-                }
-                return None;
-            })
-        });
+        PcsrEdgeIter {
+            pcsr: self,
+            node: 0,
+            pos: self.nodes.first().map(|n| n.beginning + 1).unwrap_or(self.n),
+            seen: HashSet::new(),
+        }
     }
 }

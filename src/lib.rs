@@ -6,9 +6,10 @@ pub mod layout;
 pub mod graph_py;
 pub mod external_apis;
 pub mod synthetic_graphs;
+pub mod visualization;
 
 pub use graph_core::node::_Node;
-pub use file_writer_core::file_writer::{HtmlWriter, Writeable};
+pub use file_writer_core::file_writer::write_html;
 
 pub use graph_core::graph::_Graph;
 
@@ -18,9 +19,7 @@ pub type TestGraph = graph_core::graph::_Graph<graph_core::adjacency_matrix::Adj
 pub type TestGraph = graph_core::graph::_Graph<graph_core::compressed_sparse_row::CompressedSparseRow>;
 #[cfg(feature = "test_pcsr")]
 pub type TestGraph = graph_core::graph::_Graph<graph_core::packed_compressed_sparse_row::PackedCompressedSparseRow>;
-#[cfg(feature = "test_disk")]
-pub type TestGraph = graph_core::graph::_Graph<graph_core::disk_graph::DiskGraph>;
-#[cfg(not(any(feature = "test_matrix", feature = "test_csr", feature = "test_pcsr", feature = "test_disk")))]
+#[cfg(not(any(feature = "test_matrix", feature = "test_csr", feature = "test_pcsr")))]
 pub type TestGraph = graph_core::graph::_Graph<graph_core::adjacency_list::AdjacencyList>;
 
 pub use graph_core::graph::{ConnectionProperty};

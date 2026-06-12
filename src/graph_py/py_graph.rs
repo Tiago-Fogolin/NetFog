@@ -7,16 +7,11 @@ use crate::graph_core::adjacency_matrix::AdjacencyMatrix;
 use crate::graph_core::adjacency_list::AdjacencyList;
 use crate::graph_core::compressed_sparse_row::CompressedSparseRow;
 use crate::graph_core::packed_compressed_sparse_row::PackedCompressedSparseRow;
-use crate::graph_core::disk_graph::DiskGraph;
 use crate::graph_py::py_node::Node;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
 use crate::external_apis::core::OpenAlexGraphType;
-use crate::external_apis::openalex::dispatch_openalex_disk_graph_creation;
-use crate::file_reader_core::edge_list_streaming::read_edge_list_file_streaming_disk;
-use crate::file_reader_core::net_file_streaming::read_net_file_streaming_disk;
-use crate::file_reader_core::json_streaming::read_json_file_streaming_disk;
-use crate::file_reader_core::mtx_streaming::read_mtx_file_streaming_disk;
+
 use crate::synthetic_graphs::core::{SyntheticGraphType, PySyntheticGraphType};
 use pyo3::types::PyDict;
 use pyo3_stub_gen::derive::gen_stub_pyclass;
@@ -29,7 +24,6 @@ pub enum GraphStructureType {
     AdjacencyList,
     CompressedSparseRow,
     PackedCompressedSparseRow,
-    DiskGraph
 }
 
 enum GraphInner {
@@ -37,7 +31,6 @@ enum GraphInner {
     List(Rc<RefCell<_Graph<AdjacencyList>>>),
     CompressedSparseRow(Rc<RefCell<_Graph<CompressedSparseRow>>>),
     PackedCompressedSparseRow(Rc<RefCell<_Graph<PackedCompressedSparseRow>>>),
-    DiskGraph(Rc<RefCell<_Graph<DiskGraph>>>),
 }
 
 macro_rules! with_graph_mut {
@@ -59,10 +52,6 @@ macro_rules! with_graph_mut {
                 let mut $g = (*inner).borrow_mut();
                 $body
             },
-            GraphInner::DiskGraph(inner) => {
-                let mut $g = (*inner).borrow_mut();
-                $body
-            }
         }
     }
 }
@@ -86,10 +75,7 @@ macro_rules! with_graph {
                 let $g = (*inner).borrow();
                 $body
             },
-            GraphInner::DiskGraph(inner) => {
-                let $g = (*inner).borrow();
-                $body
-            }
+
         }
     }
 }
@@ -118,11 +104,6 @@ macro_rules! make_graph {
                 let graph = $build;
                 Graph { inner: GraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(graph))) }
             },
-            GraphStructureType::DiskGraph => {
-                type $T = DiskGraph;
-                let graph = $build;
-                Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) }
-            }
         }
     }}
 }
@@ -152,30 +133,14 @@ impl PyEdgeIterator {
 #[pymethods]
 impl Graph {
     #[new]
-    #[pyo3(signature = (structure=None, base_dir=None, buffer_ram_mb=None))]
-    fn new(structure: Option<crate::graph_py::py_graph::GraphStructureType>, base_dir: Option<String>, buffer_ram_mb: Option<usize>) -> Self {
+    #[pyo3(signature = (structure=None))]
+    fn new(structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Self {
         let type_val = structure.unwrap_or(crate::graph_py::py_graph::GraphStructureType::AdjacencyList);
         let inner = match type_val {
             crate::graph_py::py_graph::GraphStructureType::AdjacencyMatrix => GraphInner::Matrix(Rc::new(RefCell::new(_Graph::<AdjacencyMatrix>::default()))),
             crate::graph_py::py_graph::GraphStructureType::AdjacencyList => GraphInner::List(Rc::new(RefCell::new(_Graph::<AdjacencyList>::default()))),
             crate::graph_py::py_graph::GraphStructureType::CompressedSparseRow => GraphInner::CompressedSparseRow(Rc::new(RefCell::new(_Graph::<CompressedSparseRow>::default()))),
             crate::graph_py::py_graph::GraphStructureType::PackedCompressedSparseRow => GraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(_Graph::<PackedCompressedSparseRow>::default()))),
-            crate::graph_py::py_graph::GraphStructureType::DiskGraph => {
-                let dir = base_dir.unwrap_or_else(|| {
-                    use std::time::{SystemTime, UNIX_EPOCH};
-                    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-                    std::env::temp_dir().join(format!("netfog_disk_{}", t)).to_string_lossy().to_string()
-                });
-                let ram = buffer_ram_mb.unwrap_or(512);
-                let dg = DiskGraph::new(dir, ram);
-                let g = _Graph {
-                    metadata: crate::graph_core::graph_metadata::GraphMetadata::new(),
-                    structure: dg,
-                    positions_set: false,
-                    build_time_ms: None,
-                };
-                GraphInner::DiskGraph(Rc::new(RefCell::new(g)))
-            }
         };
         return Graph { inner };
     }
@@ -209,6 +174,20 @@ impl Graph {
     fn create_connection(&self, from_label: String, to_label: String, weight: f32, directed: Option<bool>) {
         with_graph_mut!(self, |g| {
             g.create_connection(from_label, to_label, weight, directed);
+        });
+    }
+
+    #[pyo3(signature = (labels))]
+    fn add_nodes_from(&mut self, labels: Vec<String>) {
+        with_graph_mut!(self, |g| {
+            g.batch_add_nodes(labels);
+        });
+    }
+
+    #[pyo3(signature = (connections))]
+    fn add_edges_from(&mut self, connections: Vec<(String, String, f32, Option<bool>)>) {
+        with_graph_mut!(self, |g| {
+            g.batch_create_connections(connections);
         });
     }
 
@@ -469,40 +448,24 @@ impl Graph {
     #[staticmethod]
     #[pyo3(signature = (file_path, structure=None))]
     fn from_net_file(file_path: &str, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
-        if structure == Some(GraphStructureType::DiskGraph) {
-            let graph = read_net_file_streaming_disk(file_path).expect("Failed to read .net file");
-            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
-        }
         return make_graph!(structure, |S| _Graph::<S>::from_net_file(file_path));
     }
 
     #[staticmethod]
     #[pyo3(signature = (file_path, structure=None))]
     fn from_json_file(file_path: &str, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
-        if structure == Some(GraphStructureType::DiskGraph) {
-            let graph = read_json_file_streaming_disk(file_path).expect("Failed to read .json file");
-            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
-        }
         return make_graph!(structure, |S| _Graph::<S>::from_json_file(file_path));
     }
 
     #[staticmethod]
     #[pyo3(signature = (file_path, structure=None))]
     fn from_mtx_file(file_path: &str, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
-        if structure == Some(GraphStructureType::DiskGraph) {
-            let graph = read_mtx_file_streaming_disk(file_path).expect("Failed to read .mtx file");
-            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
-        }
         return make_graph!(structure, |S| _Graph::<S>::from_mtx_file(file_path));
     }
 
     #[staticmethod]
     #[pyo3(signature = (file_path, directed=false, structure=None))]
     fn from_edge_list_file(file_path: &str, directed: bool, structure: Option<crate::graph_py::py_graph::GraphStructureType>) -> Graph {
-        if structure == Some(GraphStructureType::DiskGraph) {
-            let graph = read_edge_list_file_streaming_disk(file_path, directed).expect("Failed to read edge list file");
-            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
-        }
         return make_graph!(structure, |S| _Graph::<S>::from_edge_list_file(file_path, directed));
     }
 
@@ -521,20 +484,6 @@ impl Graph {
         save_json_path: Option<&str>,
         structure: Option<crate::graph_py::py_graph::GraphStructureType>
     ) -> Graph {
-        if structure == Some(GraphStructureType::DiskGraph) {
-            let graph = dispatch_openalex_disk_graph_creation(
-                search,
-                author,
-                author_id,
-                author_orcid,
-                keyword,
-                graph_type,
-                api_key,
-                limit,
-                min_weight,
-            );
-            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
-        }
         return make_graph!(structure, |S| _Graph::<S>::from_openalex(
             search,
             author,
@@ -556,10 +505,6 @@ impl Graph {
         radius: f64,
         structure: Option<crate::graph_py::py_graph::GraphStructureType>
     ) -> Graph {
-        if structure == Some(GraphStructureType::DiskGraph) {
-            let graph = _Graph::<DiskGraph>::from_overpass_address_disk(address, radius);
-            return Graph { inner: GraphInner::DiskGraph(Rc::new(RefCell::new(graph))) };
-        }
         return make_graph!(structure, |S| _Graph::<S>::from_overpass_address(address.clone(), radius));
     }
 

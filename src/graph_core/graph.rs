@@ -1,6 +1,7 @@
 use crate::layout::style::GraphStyle;
-use crate::{HtmlWriter, Writeable};
+use crate::file_writer_core::file_writer::write_html;
 use crate::graph_core::node::_Node;
+use crate::visualization::generate_visualization;
 use crate::file_writer_core::file_writer::{write_edge_list_file, write_json_file, write_mtx_file, write_net_file};
 use std::f64;
 use std::time::Instant;
@@ -11,14 +12,12 @@ use crate::graph_core::adjacency_list::AdjacencyList;
 use crate::synthetic_graphs::core::SyntheticGraphType;
 use crate::synthetic_graphs::{erdos_renyi, barabasi_albert, watts_strogatz};
 use crate::svg_creation::svg_creation::Svg;
-use crate::layout::layout::{Layout, get_layout_function};
+use crate::layout::layout::{Layout, get_layout_function, denormalize_x, denormalize_y};
 use crate::file_reader_core::file_reader::{read_edge_list_file, read_json_file, read_mtx_file, read_net_file};
 use crate::external_apis::core::{OpenAlexGraphType, NominatimResponse};
 use crate::external_apis::openalex::dispatch_openalex_graph_creation;
 use crate::external_apis::nominatin::get_point_from_address;
 use crate::external_apis::overpass::make_overpass_graph;
-use crate::external_apis::overpass::make_overpass_disk_graph;
-use crate::graph_core::disk_graph::DiskGraph;
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -117,6 +116,26 @@ impl<S: IGraphStructure> _Graph<S> {
         let to_idx = self.label_to_id(&to).expect("Node 'to' not found");
 
         self.structure.create_connection(from_idx, to_idx, weight, directed);
+    }
+
+    pub fn batch_add_nodes(&mut self, labels: Vec<String>) {
+        for label in labels {
+            self.add_node(label);
+        }
+    }
+
+    pub fn batch_create_connections(&mut self, connections: Vec<(String, String, f32, Option<bool>)>) {
+        let mut mapped_edges = Vec::with_capacity(connections.len());
+
+        for (from, to, weight, directed) in connections {
+            let from_idx = self.label_to_id(&from).unwrap_or_else(|| panic!("Node '{}' not found", from));
+            let to_idx = self.label_to_id(&to).unwrap_or_else(|| panic!("Node '{}' not found", to));
+
+            let is_directed = directed.unwrap_or(false);
+            mapped_edges.push((from_idx, to_idx, weight, is_directed));
+        }
+
+        self.structure.batch_create_connections(&mapped_edges);
     }
 
     pub fn node_by_label(&self, label: &str) -> Option<&_Node> {
@@ -689,18 +708,57 @@ impl<S: IGraphStructure> _Graph<S> {
         let mut svg: Svg = Svg::new();
         let connections = self.get_connections(None, None, false);
 
+        let mut svg_nodes = render_nodes.clone();
+        for node in &mut svg_nodes {
+            if let (Some(x), Some(y)) = (node.x, node.y) {
+                node.x = Some(denormalize_x(x));
+                node.y = Some(denormalize_y(y));
+            }
+        }
+
         let svg_string = svg.get_svg(
-            &render_nodes,
+            &svg_nodes,
             &connections,
             style
         );
         return svg_string;
     }
 
-    pub fn output_html(&mut self, file_name: &str, layout: Layout, override_positions: bool, style: GraphStyle) {
-        let svg_string = self.output_svg(layout, override_positions, style);
-        let html_writer = HtmlWriter{};
-        html_writer.write_file(file_name, &svg_string).expect("Error while creating the file");
+    pub fn output_html(&mut self, file_name: &str, layout: Layout, override_positions: bool, _style: GraphStyle) {
+        let edges_simple: Vec<(usize, usize)> = self.structure.get_all_edges()
+            .map(|(u, v, _, _)| (u, v))
+            .collect();
+
+        let mut render_nodes = self.get_nodes_for_render();
+
+        if !self.positions_set || override_positions {
+            let layout_func = get_layout_function(layout);
+            layout_func(&mut render_nodes, &edges_simple);
+
+            if self.structure.manages_positions() {
+                for node in &render_nodes {
+                    if let (Some(idx), Some(x), Some(y)) = (node.index, node.x, node.y) {
+                        self.structure.set_node_position(idx, x, y);
+                    }
+                }
+            } else if self.metadata.node_info.len() == render_nodes.len() {
+                for (dst, src) in self.metadata.node_info.iter_mut().zip(render_nodes.iter()) {
+                    dst.x = src.x;
+                    dst.y = src.y;
+                }
+            }
+
+            self.positions_set = true;
+        } else if !self.structure.manages_positions() && self.metadata.node_info.len() == render_nodes.len() {
+            for (dst, src) in render_nodes.iter_mut().zip(self.metadata.node_info.iter()) {
+                dst.x = src.x;
+                dst.y = src.y;
+            }
+        }
+
+        let graph_data = generate_visualization(&render_nodes, self.structure.get_all_edges());
+
+        write_html(file_name, &graph_data).expect("Error while creating the file");
     }
 
     pub fn output_net_file(&mut self, path: &str) {
@@ -869,12 +927,5 @@ impl<S: IGraphStructure + Default> _Graph<S> {
                 return watts_strogatz::generate_watts_strogatz(n, k, beta);
             }
         }
-    }
-}
-
-impl _Graph<DiskGraph> {
-    pub fn from_overpass_address_disk(address: String, radius: f64) -> Self {
-        let point = get_point_from_address(address).expect("Request to Nominatim failed!");
-        return make_overpass_disk_graph(radius, point);
     }
 }

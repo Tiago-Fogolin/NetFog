@@ -1,5 +1,4 @@
 use crate::_Graph;
-use crate::graph_core::disk_graph::DiskGraph;
 use crate::file_reader_core::file_reader::{JsonConnection, JsonNode};
 use std::fs::File;
 use std::io::{BufReader, Error, ErrorKind};
@@ -98,21 +97,6 @@ pub fn read_json_file_streaming<S: crate::graph_core::graph_structure_interface:
     GraphSeed { graph: &mut graph }
         .deserialize(&mut de)
         .map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
-
-    return Ok(graph);
-}
-
-pub fn read_json_file_streaming_disk(file_path: &str) -> Result<_Graph<DiskGraph>, Error> {
-    let file = File::open(file_path)?;
-    let reader = BufReader::new(file);
-    let mut graph = _Graph::<DiskGraph>::default();
-
-    let mut de = serde_json::Deserializer::from_reader(reader);
-    GraphSeed { graph: &mut graph }
-        .deserialize(&mut de)
-        .map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
-
-    graph.structure.flush_to_disk();
 
     return Ok(graph);
 }

@@ -1,5 +1,5 @@
 use netfog::file_reader_core::file_reader::{read_edge_list_file, read_json_file, read_mtx_file};
-use netfog::{HtmlWriter, Writeable};
+use netfog::write_html;
 use netfog::TestGraph as _Graph;
 use netfog::layout::layout::Layout;
 use netfog::{file_reader_core::file_reader::read_net_file, *};
@@ -25,8 +25,7 @@ fn create_simple_graph() -> _Graph {
 
 #[test]
 fn test_html() {
-    let writer = HtmlWriter {};
-    writer.write_file("output_mock_test.html", "test").expect("Erro ao criar arquivo");
+    write_html("output_mock_test.html", "test").expect("Erro ao criar arquivo");
     std::fs::remove_file("output_mock_test.html").ok();
 }
 
@@ -41,7 +40,7 @@ fn test_svg() {
 }
 
 #[test]
-fn test_html_with_svg() {
+fn test_html_with_data() {
     let mut graph = create_simple_graph();
     let mut style = GraphStyle::default();
     style.dynamic_line_size = false;

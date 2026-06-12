@@ -49,27 +49,27 @@ impl BoundingBox {
         let final_x = offset_x + raw_x;
         let final_y = offset_y + raw_y;
 
-        return [final_x, final_y];
+        return [normalize_x(final_x), normalize_y(final_y)];
     }
 }
 
 pub fn denormalize_x(x: f64) -> f64 {
-    let new_x = x * (MAX_WIDTH - MIN_WIDTH) + MIN_WIDTH;
+    let new_x = (x + 1.0) / 2.0 * (MAX_WIDTH - MIN_WIDTH) + MIN_WIDTH;
     return new_x;
 }
 
 pub fn denormalize_y(y: f64) -> f64 {
-    let new_y = y * (MAX_HEIGHT - MIN_HEIGHT) + MIN_HEIGHT;
+    let new_y = (y + 1.0) / 2.0 * (MAX_HEIGHT - MIN_HEIGHT) + MIN_HEIGHT;
     return new_y;
 }
 
 pub fn normalize_x(x: f64) -> f64 {
-    let new_x = (x - MIN_WIDTH) / (MAX_WIDTH - MIN_WIDTH);
+    let new_x = (x - MIN_WIDTH) / (MAX_WIDTH - MIN_WIDTH) * 2.0 - 1.0;
     return new_x;
 }
 
 pub fn normalize_y(y: f64) -> f64 {
-    let new_y = (y - MIN_HEIGHT) / (MAX_HEIGHT - MIN_HEIGHT);
+    let new_y = (y - MIN_HEIGHT) / (MAX_HEIGHT - MIN_HEIGHT) * 2.0 - 1.0;
     return new_y;
 }
 
@@ -91,8 +91,8 @@ fn generate_random_positions(nodes: &mut [_Node], _edges: &[(usize, usize)]) {
         let new_x = rng.gen_range(MIN_WIDTH..MAX_WIDTH);
         let new_y = rng.gen_range(MIN_HEIGHT..MAX_HEIGHT);
 
-        node_ref.x = Some(new_x);
-        node_ref.y = Some(new_y);
+        node_ref.x = Some(normalize_x(new_x));
+        node_ref.y = Some(normalize_y(new_y));
     }
 }
 
@@ -108,8 +108,8 @@ fn generate_circular_positions(nodes: &mut [_Node], _edges: &[(usize, usize)]) {
         let new_x = center_x + radius * angle.cos();
         let new_y = center_y + radius * angle.sin();
 
-        node_ref.x = Some(new_x);
-        node_ref.y = Some(new_y);
+        node_ref.x = Some(normalize_x(new_x));
+        node_ref.y = Some(normalize_y(new_y));
     }
 }
 
@@ -176,8 +176,8 @@ pub fn generate_force_layout_positions(nodes: &mut [_Node], edges: &[(usize, usi
                 let limited_x = (d.0 / disp_len) * disp_len.min(temperature);
                 let limited_y = (d.1 / disp_len) * disp_len.min(temperature);
 
-                pos[v].0 += limited_x;
-                pos[v].1 += limited_y;
+                pos[v].0 = (pos[v].0 + limited_x).clamp(MIN_WIDTH, MAX_WIDTH);
+                pos[v].1 = (pos[v].1 + limited_y).clamp(MIN_HEIGHT, MAX_HEIGHT);
             }
         }
 
@@ -185,8 +185,8 @@ pub fn generate_force_layout_positions(nodes: &mut [_Node], edges: &[(usize, usi
     }
 
     for (i, node) in nodes.iter_mut().enumerate() {
-        node.x = Some(pos[i].0);
-        node.y = Some(pos[i].1);
+        node.x = Some(normalize_x(pos[i].0));
+        node.y = Some(normalize_y(pos[i].1));
     }
 }
 
@@ -280,8 +280,8 @@ pub fn generate_force_atlas_2_positions(nodes: &mut [_Node], edges: &[(usize, us
     }
 
     for (i, node) in nodes.iter_mut().enumerate() {
-        node.x = Some(pos[i].0);
-        node.y = Some(pos[i].1);
+        node.x = Some(normalize_x(pos[i].0));
+        node.y = Some(normalize_y(pos[i].1));
     }
 }
 

@@ -1,29 +1,20 @@
 use std::fs;
 use std::io::{BufWriter, Error, Write};
 use crate::{_Node};
-use crate::layout::layout::{normalize_x, normalize_y};
 use crate::file_reader_core::file_reader::{JsonConnection, JsonGraph, JsonNode};
 use std::fs::File;
 
 
-pub trait Writeable {
-    fn write_file(&self, path: &str, content: &str) -> Result<(), Error>;
-}
+pub fn write_html(path: &str, content: &str) -> Result<(), Error> {
+    let html_string = include_str!("../file_writer_core/template.html");
+    let js_string = include_str!("../file_writer_core/script.js");
 
-pub struct HtmlWriter {}
+    let html_with_data = html_string.replace("ESCAPE_GRAPH_DATA", content);
+    let final_string = html_with_data.replace("ESCAPE_SCRIPT", &js_string);
 
-impl Writeable for HtmlWriter {
-    fn write_file(&self, path: &str, content: &str) -> Result<(), Error> {
-        let html_string = include_str!("../file_writer_core/template.html");
-        let js_string = include_str!("../file_writer_core/script.js");
+    fs::write(path, final_string)?;
 
-        let html_with_svg = html_string.replace("ESCAPE_SVG", content);
-        let final_string = html_with_svg.replace("ESCAPE_SCRIPT", &js_string);
-
-        fs::write(path, final_string)?;
-
-        return Ok(());
-    }
+    return Ok(());
 }
 
 
@@ -37,7 +28,7 @@ pub fn write_net_file(path: &str, nodes: Vec<_Node>, all_edges: &[(usize, usize,
     for node in &nodes {
         content_string += &format!("{} \"{}\"", node.index.unwrap_or(0), node.label);
         if !node.x.is_none() && !node.y.is_none() {
-            content_string += &format!(" {} {}", normalize_x(node.x.unwrap()), normalize_y(node.y.unwrap()));
+            content_string += &format!(" {} {}", node.x.unwrap(), node.y.unwrap());
         }
         content_string += "\n";
     }
@@ -133,7 +124,8 @@ pub fn write_edge_list_file(path: &str, nodes: &[_Node], all_edges: impl Iterato
     for (from_idx, to_idx, weight, _directed) in all_edges {
         let from_label = &nodes[from_idx].label;
         let to_label = &nodes[to_idx].label;
-        writeln!(writer, "{} {} {}", from_label, to_label, weight)?;
+
+        writeln!(writer, "{}\t{}\t{}", from_label, to_label, weight)?;
     }
 
     return Ok(());

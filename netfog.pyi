@@ -1,10 +1,11 @@
-from typing import List, Optional, Iterable
+from typing import List, Optional, Iterable, Tuple
 from enum import IntEnum
 
 class Layout(IntEnum):
     Random = 0
     Circular = 1
     Spring = 2
+    ForceAtlas2 = 3
 
 class OpenAlexGraphType(IntEnum):
     Coauthorship = 0
@@ -33,7 +34,6 @@ class GraphStructureType(IntEnum):
     AdjacencyList = 1
     CompressedSparseRow = 2
     PackedCompressedSparseRow = 3
-    DiskGraph = 4
 
 class GraphStyle:
     node_color: str
@@ -66,13 +66,13 @@ class GraphStyle:
 class Graph:
     nodes: list[Node]
     build_time_ms: Optional[float]
-    def __init__(self, structure: Optional[GraphStructureType] = None, base_dir: Optional[str] = None, buffer_ram_mb: Optional[int] = None) -> None: 
-        """
-        Initialize the Graph component. For DiskGraph (Out-of-Core), provides base_dir for the location of binary data and buffer_ram_mb.
-        """
+    def __init__(self, structure: Optional[GraphStructureType] = None) -> None:
+        """Initialize the Graph component."""
         ...
     def add_node(self, label: str) -> None: ...
     def create_connection(self, from_label: str, to_label: str, weight: float = 0., directed: bool = False) -> None: ...
+    def add_nodes_from(self, labels: List[str]) -> None: ...
+    def add_edges_from(self, connections: List[Tuple[str, str, float, Optional[bool]]]) -> None: ...
     def get_connections(self, from_name="from", to_name="to", use_id=False) -> list: ...
     def get_all_edges(self) -> Iterable[tuple[int, int, float, bool]]: ...
     @staticmethod
