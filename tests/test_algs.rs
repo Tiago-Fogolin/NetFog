@@ -1,4 +1,5 @@
 use netfog::*;
+use netfog::TestGraph as _Graph;
 
 #[test]
 fn test_dfs() {

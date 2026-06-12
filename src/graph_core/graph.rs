@@ -1,18 +1,23 @@
 use crate::layout::style::GraphStyle;
-use crate::{HtmlWriter, Node, Writeable};
-use crate::graph_core::node::{self, _Node};
-use crate::file_writer_core::file_writer::{write_json_file, write_net_file};
+use crate::file_writer_core::file_writer::write_html;
+use crate::graph_core::node::_Node;
+use crate::visualization::generate_visualization;
+use crate::file_writer_core::file_writer::{write_edge_list_file, write_json_file, write_mtx_file, write_net_file};
 use std::f64;
-use std::hash::Hash;
 use std::time::Instant;
 use std::{collections::HashMap, collections::HashSet, collections::VecDeque};
-use std::cell::RefCell;
-use std::rc::{Rc};
+use crate::graph_core::graph_metadata::GraphMetadata;
+use crate::graph_core::graph_structure_interface::IGraphStructure;
+use crate::graph_core::adjacency_list::AdjacencyList;
+use crate::synthetic_graphs::core::SyntheticGraphType;
+use crate::synthetic_graphs::{erdos_renyi, barabasi_albert, watts_strogatz};
 use crate::svg_creation::svg_creation::Svg;
-use crate::layout::layout::Layout;
-use crate::file_reader_core::file_reader::{read_json_file, read_net_file};
-use crate::external_apis::core::{OpenAlexGraphType};
+use crate::layout::layout::{Layout, get_layout_function, denormalize_x, denormalize_y};
+use crate::file_reader_core::file_reader::{read_edge_list_file, read_json_file, read_mtx_file, read_net_file};
+use crate::external_apis::core::{OpenAlexGraphType, NominatimResponse};
 use crate::external_apis::openalex::dispatch_openalex_graph_creation;
+use crate::external_apis::nominatin::get_point_from_address;
+use crate::external_apis::overpass::make_overpass_graph;
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,138 +32,130 @@ pub type PositionMap = HashMap<String, i32>;
 pub type ConnectionData = HashMap<String, ConnectionProperty>;
 pub type ConnectionsList = Vec<ConnectionData>;
 
-pub struct _Graph {
-    pub nodes: Vec<Rc<RefCell<_Node>>>,
+pub struct _Graph<S: IGraphStructure = AdjacencyList> {
+    pub metadata: GraphMetadata,
+    pub structure: S,
     pub positions_set: bool,
-    pub build_time_ms: Option<f64>, // used only for 'factory methods' (Example: from_json_file)
-    _current_index: usize,
-    _node_label_hack: HashMap<String, Rc<RefCell<_Node>>>, // will be removed later, just a hack for optimization for now
+    pub build_time_ms: Option<f64>,
 }
 
 
-fn create_nodes_from_labels(size: usize, labels: Option<Vec<String>>) -> (Vec<Rc<RefCell<_Node>>>, HashMap<String, Rc<RefCell<_Node>>>) {
-    let labels = labels.unwrap_or_else(|| {
-        (0..size).map(|x| x.to_string()).collect()
-    });
-    let mut node_list: Vec<Rc<RefCell<_Node>>> = Vec::new();
-    let mut hash_hack: HashMap<String, Rc<RefCell<_Node>>> = HashMap::new();
-    let mut current_index: usize = 0;
-    for label in labels {
-        let new_node = _Node {
+
+
+
+impl<S: IGraphStructure> _Graph<S> {
+    fn label_to_id(&self, label: &str) -> Option<usize> {
+        if self.structure.manages_labels() {
+            self.structure.get_id_by_label(label)
+        } else {
+            self.metadata.label_id_map.get(label).copied()
+        }
+    }
+
+    pub fn add_node(&mut self, label: String) {
+        let exists = if self.structure.manages_labels() {
+            self.structure.get_id_by_label(&label).is_some()
+        } else {
+            self.metadata.label_id_map.contains_key(&label)
+        };
+
+        if exists {
+            println!("Node with label '{}' already exists!", label);
+            return;
+        }
+
+        let index = self.structure.add_node();
+
+        if self.structure.manages_labels() {
+            self.structure.set_node_label(index, &label);
+        } else {
+            let new_node = _Node {
                 label: label.clone(),
-                connections: Vec::new(),
-                index: Some(current_index),
+                index: Some(index),
                 x: None,
                 y: None,
-
             };
-
-        current_index += 1;
-
-        let node_ptr = Rc::new(RefCell::new(new_node));
-
-        node_list.push(Rc::clone(&node_ptr));
-        hash_hack.insert(label, node_ptr);
+            self.metadata.label_id_map.insert(label.clone(), index);
+            self.metadata.node_info.push(new_node);
+        }
     }
 
-    return (node_list, hash_hack);
-}
 
-fn create_node_hashmap(nodes: &Vec<Rc<RefCell<_Node>>>, start_index: usize)  -> HashMap<usize, String> {
-    let node_hash: HashMap<usize, String> = nodes
-                .iter()
-                .enumerate()
-                .map(|(i, x)| (i + start_index, x.borrow().label.clone()))
-                .collect();
+    pub fn add_node_with_pos(&mut self, label: String, x: f64, y: f64) {
+        let exists = if self.structure.manages_labels() {
+            self.structure.get_id_by_label(&label).is_some()
+        } else {
+            self.metadata.label_id_map.contains_key(&label)
+        };
 
-    return node_hash;
-}
-
-fn invert_node_hashmap(node_hashmap: HashMap<usize, String>) -> HashMap<String, usize> {
-    let mut inverted_node_hash: HashMap<String, usize> = HashMap::new();
-
-    for (key, value) in node_hashmap.iter() {
-        inverted_node_hash.insert(value.clone(), *key);
-    }
-
-    return inverted_node_hash;
-}
-
-
-impl _Graph {
-    pub fn add_node(&mut self, label: String) {
-
-        if self._node_label_hack.contains_key(&label) {
+        if exists {
             println!("Node with label '{}' already exists!", label);
             return;
         }
 
-        let new_node = _Node{
-            label: label.clone(),
-            connections: Vec::new(),
-            index: Some(self._current_index),
-            x: None,
-            y: None,
-
-        };
-
-        self._current_index += 1;
-
-        let node_ptr = Rc::new(RefCell::new(new_node));
-
-        self.nodes.push(Rc::clone(&node_ptr));
-        self._node_label_hack.insert(label, node_ptr);
-    }
-
-
-    pub fn add_node_with_pos(&mut self, label: String, x:f64, y:f64) {
-
-        if self._node_label_hack.contains_key(&label) {
-            println!("Node with label '{}' already exists!", label);
-            return;
-        }
-
-        let new_node = _Node{
-            label: label.clone(),
-            connections: Vec::new(),
-            index: Some(self._current_index),
-            x: Some(x),
-            y: Some(y),
-
-        };
-
-        self._current_index += 1;
+        let index = self.structure.add_node();
         self.positions_set = true;
 
-        let node_ptr = Rc::new(RefCell::new(new_node));
-
-        self.nodes.push(Rc::clone(&node_ptr));
-        self._node_label_hack.insert(label, node_ptr);
+        if self.structure.manages_labels() {
+            self.structure.set_node_label(index, &label);
+            self.structure.set_node_position(index, x, y);
+        } else {
+            let new_node = _Node {
+                label: label.clone(),
+                index: Some(index),
+                x: Some(x),
+                y: Some(y),
+            };
+            self.metadata.label_id_map.insert(label.clone(), index);
+            self.metadata.node_info.push(new_node);
+        }
     }
 
     pub fn create_connection(&mut self, from: String, to: String, weight: f32, directed: Option<bool>) {
-        let directed = Some(directed.unwrap_or(false));
+        let from_idx = self.label_to_id(&from).expect("Node 'from' not found");
+        let to_idx = self.label_to_id(&to).expect("Node 'to' not found");
 
-        let from_node = self._node_label_hack.get(&from)
-                .expect("Node 'from' not found")
-                .clone();
-
-        let to_node = self._node_label_hack.get(&to)
-            .expect("Node 'to' not found")
-            .clone();
-
-        let to_node_ref = Rc::clone(&to_node);
-
-        from_node.borrow_mut().add_connection(to_node_ref, weight, directed);
+        self.structure.create_connection(from_idx, to_idx, weight, directed);
     }
 
-    pub fn node_by_label(&self, label: &str) -> Option<Rc<RefCell<_Node>>> {
-        for n in &self.nodes {
-            if n.borrow().label == label {
-                return Some(Rc::clone(n));
-            }
+    pub fn batch_add_nodes(&mut self, labels: Vec<String>) {
+        for label in labels {
+            self.add_node(label);
         }
-        return None;
+    }
+
+    pub fn batch_create_connections(&mut self, connections: Vec<(String, String, f32, Option<bool>)>) {
+        let mut mapped_edges = Vec::with_capacity(connections.len());
+
+        for (from, to, weight, directed) in connections {
+            let from_idx = self.label_to_id(&from).unwrap_or_else(|| panic!("Node '{}' not found", from));
+            let to_idx = self.label_to_id(&to).unwrap_or_else(|| panic!("Node '{}' not found", to));
+
+            let is_directed = directed.unwrap_or(false);
+            mapped_edges.push((from_idx, to_idx, weight, is_directed));
+        }
+
+        self.structure.batch_create_connections(&mapped_edges);
+    }
+
+    pub fn node_by_label(&self, label: &str) -> Option<&_Node> {
+        self.metadata.label_id_map.get(label).map(|&idx| &self.metadata.node_info[idx])
+    }
+
+    pub fn node_by_label_mut(&mut self, label: &str) -> Option<&mut _Node> {
+        self.metadata.label_id_map.get(label).copied().map(move |idx| &mut self.metadata.node_info[idx])
+    }
+
+    pub fn resolve_label(&self, id: usize) -> String {
+        if let Some(label) = self.structure.resolve_label(id) {
+            return label;
+        }
+
+        if id < self.metadata.node_info.len() {
+            return self.metadata.node_info[id].label.clone();
+        }
+
+        return format!("{}", id);
     }
 
     pub fn get_connections(
@@ -172,102 +169,60 @@ impl _Graph {
         let from_str = from_name.unwrap_or("from");
         let to_str = to_name.unwrap_or("to");
 
-        for n in &mut self.nodes {
-            let node = n.borrow();
+        let edges = self.structure.get_all_edges();
 
-            for conn in node.connections.iter() {
-                let mut formatted_conn = ConnectionData::new();
+        for (from_idx, to_idx, weight, directed) in edges {
+            let mut formatted_conn = ConnectionData::new();
 
-                let mut from_property = ConnectionProperty::From(node.label.clone());
-                if use_id {
-                    from_property = ConnectionProperty::From(format!("{}", node.index.unwrap_or(0)));
-                }
-                formatted_conn.insert(from_str.to_string(), from_property);
+            let from_property = if use_id {
+                ConnectionProperty::From(format!("{}", from_idx))
+            } else {
+                ConnectionProperty::From(self.resolve_label(from_idx))
+            };
 
-                if let Some(to_node_rc) = conn.node.upgrade() {
+            let to_property = if use_id {
+                ConnectionProperty::To(format!("{}", to_idx))
+            } else {
+                ConnectionProperty::To(self.resolve_label(to_idx))
+            };
 
-                    let mut to_property = ConnectionProperty::To(to_node_rc.borrow().label.clone());
-                    if use_id {
-                        to_property = ConnectionProperty::To(format!("{}", to_node_rc.borrow().index.unwrap_or(0)));
-                    }
-                    formatted_conn.insert(to_str.to_string(), to_property);
-                } else {
-                    formatted_conn.insert(to_str.to_string(), ConnectionProperty::To("[Removed]".to_string()));
-                };
+            formatted_conn.insert(from_str.to_string(), from_property);
+            formatted_conn.insert(to_str.to_string(), to_property);
+            formatted_conn.insert("weight".to_string(), ConnectionProperty::Weight(weight));
+            formatted_conn.insert("directed".to_string(), ConnectionProperty::Directed(directed));
 
-                formatted_conn.insert("weight".to_string(), ConnectionProperty::Weight(conn.weight));
-                formatted_conn.insert("directed".to_string(), ConnectionProperty::Directed(conn.directed));
-
-                all_connections.push(formatted_conn);
-            }
+            all_connections.push(formatted_conn);
         }
 
         return all_connections;
     }
 
     pub fn generate_adjacency_matrix(&mut self) -> Vec<Vec<f32>> {
-        let matrix_size = self.nodes.len();
+        let matrix_size = self.get_node_count();
         let mut adj_matrix: Vec<Vec<f32>> = vec![vec![0.; matrix_size]; matrix_size];
-        let node_hash = invert_node_hashmap(create_node_hashmap(&self.nodes, 0));
-        let connections = self.get_connections(None, None, false);
+        let edges = self.structure.get_all_edges();
 
-        for conn in connections {
-
-            let from_label = match &conn["from"] {
-                ConnectionProperty::From(s) => s,
-                _ => unreachable!(),
-            };
-
-            let to_label = match &conn["to"] {
-                ConnectionProperty::To(s) => s,
-                _ => unreachable!(),
-            };
-
-            let weight = match &conn["weight"] {
-                ConnectionProperty::Weight(w) => w,
-                _ => unreachable!(),
-            };
-
-            let directed = match &conn["directed"] {
-                ConnectionProperty::Directed(d) => d,
-                _ => unreachable!(),
-            };
-
-            let i = node_hash[from_label];
-            let j = node_hash[to_label];
-            adj_matrix[i][j] = *weight;
-
-            if !*directed {
-                adj_matrix[j][i] = *weight;
+        for (from_idx, to_idx, weight, directed) in edges {
+            adj_matrix[from_idx][to_idx] = weight;
+            if !directed {
+                adj_matrix[to_idx][from_idx] = weight;
             }
-
         }
 
         return adj_matrix;
-
     }
 
-    pub fn get_total_weight(&mut self) -> f32 {
-        let total_weight: f32 = self.get_connections(None, None, false)
-            .iter()
-            .map(|conn| {
-                if let ConnectionProperty::Weight(w) = conn["weight"] {
-                    w
-                } else {
-                    0.
-                }
-            })
-            .sum();
-
-        return total_weight;
+    pub fn get_total_weight(&mut self) -> f64 {
+        let edges = self.structure.get_all_edges();
+        edges.map(|(_, _, w, _)| w as f64).sum()
     }
 
     pub fn get_node_count(&self) -> usize {
-        return self.nodes.len();
+        return self.structure.node_count();
     }
 
     pub fn get_edge_count(&mut self) -> usize {
-        return self.get_connections(None, None, false).len();
+        return self.structure.get_all_edges().count();
     }
 
     pub fn get_density(&mut self, directed: Option<bool>) -> f32 {
@@ -275,9 +230,9 @@ impl _Graph {
         let node_count = self.get_node_count() as f32;
         let directed = directed.unwrap_or(false);
         let multiply = if directed {
-            2.
-        } else {
             1.
+        } else {
+            2.
         };
 
         let density: f32 = (multiply * edge_count) / (node_count * (node_count - 1.));
@@ -286,49 +241,37 @@ impl _Graph {
     }
 
     pub fn get_mean_weight(&mut self) -> f32 {
-        return self.get_total_weight() / self.get_connections(None, None, false).len() as f32;
+        return self.get_total_weight() as f32 / self.get_edge_count() as f32;
     }
 
     pub fn compute_degrees(&mut self, node_label: &str) -> HashMap<String, i32> {
-        let connections = self.get_connections(None, None, false);
-
         let mut degrees: HashMap<String, i32> = HashMap::new();
         degrees.insert("in_degree".to_string(), 0);
         degrees.insert("out_degree".to_string(), 0);
         degrees.insert("total_degree".to_string(), 0);
         degrees.insert("undirected_degree".to_string(), 0);
 
-        for conn in  connections {
-            let directed = match &conn["directed"] {
-                ConnectionProperty::Directed(d) => d,
-                _ => unreachable!()
-            };
+        let target_idx = match self.label_to_id(node_label) {
+            Some(idx) => idx,
+            None => return degrees,
+        };
 
-            let from = match &conn["from"] {
-                ConnectionProperty::From(f) => f,
-                _ => unreachable!()
-            };
+        let edges = self.structure.get_all_edges();
 
-            let to = match &conn["to"] {
-                ConnectionProperty::To(f) => f,
-                _ => unreachable!()
-            };
-
-            if *directed {
-                if from == node_label {
+        for (from_idx, to_idx, _weight, directed) in edges {
+            if directed {
+                if from_idx == target_idx {
                     *degrees.entry("out_degree".to_string()).or_insert(0) += 1;
                     *degrees.entry("total_degree".to_string()).or_insert(0) += 1;
                 }
-
-                if to == node_label {
+                if to_idx == target_idx {
                     *degrees.entry("in_degree".to_string()).or_insert(0) += 1;
                     *degrees.entry("total_degree".to_string()).or_insert(0) += 1;
                 }
-
                 continue;
             }
 
-            if to == node_label || from == node_label {
+            if to_idx == target_idx || from_idx == target_idx {
                 *degrees.entry("undirected_degree".to_string()).or_insert(0) += 1;
             }
         }
@@ -339,10 +282,9 @@ impl _Graph {
     pub fn get_all_nodes_degrees(&mut self) -> HashMap<String, HashMap<String, i32>> {
         let mut degree_hash: HashMap<String, HashMap<String, i32>> = HashMap::new();
 
-        let labels: Vec<String> = self.nodes
-                .iter()
-                .map(|n| n.borrow().label.clone())
-                .collect();
+        let labels: Vec<String> = (0..self.get_node_count())
+            .map(|i| self.resolve_label(i))
+            .collect();
 
         for label in labels {
             let degree = self.compute_degrees(&label);
@@ -369,65 +311,41 @@ impl _Graph {
         return mean;
     }
 
-    pub fn get_node_strength(&mut self, node_label: &str) -> HashMap<&str, f32> {
-        let connections = self.get_connections(None, None, false);
-
+    pub fn get_node_strength(&mut self, node_label: &str) -> HashMap<&'static str, f32> {
         let mut strengths: HashMap<&str, f32> = HashMap::new();
-
         strengths.insert("out_strength", 0.);
         strengths.insert("in_strength", 0.);
         strengths.insert("total_strength", 0.);
 
-        for conn in connections {
+        let target_idx = match self.label_to_id(node_label) {
+            Some(idx) => idx,
+            None => return strengths,
+        };
 
+        let edges = self.structure.get_all_edges();
 
-
-            let from_label = match &conn["from"] {
-                ConnectionProperty::From(s) => s,
-                _ => unreachable!(),
-            };
-
-
-            let to_label = match &conn["to"] {
-                ConnectionProperty::To(s) => s,
-                _ => unreachable!(),
-            };
-
-            let weight = match &conn["weight"] {
-                ConnectionProperty::Weight(w) => w,
-                _ => unreachable!(),
-            };
-
-            let directed = match &conn["directed"] {
-                ConnectionProperty::Directed(d) => d,
-                _ => unreachable!(),
-            };
-
-            if from_label == node_label {
-                *strengths.get_mut("out_strength").unwrap() += *weight;
-
-                if !*directed {
-                    *strengths.get_mut("in_strength").unwrap() += *weight;
+        for (from_idx, to_idx, weight, directed) in edges {
+            if from_idx == target_idx {
+                *strengths.get_mut("out_strength").unwrap() += weight;
+                if !directed {
+                    *strengths.get_mut("in_strength").unwrap() += weight;
                 }
             }
 
-            if to_label == node_label {
-                *strengths.get_mut("in_strength").unwrap() += *weight;
-
-                if !*directed {
-                    *strengths.get_mut("out_strength").unwrap() += *weight;
+            if to_idx == target_idx {
+                *strengths.get_mut("in_strength").unwrap() += weight;
+                if !directed {
+                    *strengths.get_mut("out_strength").unwrap() += weight;
                 }
             }
-
         }
 
         *strengths.get_mut("total_strength").unwrap() = strengths["out_strength"] + strengths["in_strength"];
 
-
         return strengths;
     }
 
-    pub fn get_centrality_degrees(&mut self, node_label: &str) -> HashMap<&str, f32> {
+    pub fn get_centrality_degrees(&mut self, node_label: &str) -> HashMap<&'static str, f32> {
         let mut centralities: HashMap<&str, f32> = HashMap::new();
 
         let degrees = self.compute_degrees(node_label);
@@ -445,15 +363,13 @@ impl _Graph {
         return centralities;
     }
 
-    pub fn get_degree_distribution(&mut self) -> HashMap<&str, HashMap<i32 ,f32>>{
+    pub fn get_degree_distribution(&mut self) -> HashMap<&'static str, HashMap<i32 ,f32>>{
         let mut computed_degrees: Vec<HashMap<String, i32>> = Vec::new();
 
-        let mut nodes = self.nodes.clone();
+        let labels: Vec<String> = (0..self.get_node_count()).map(|i| self.resolve_label(i)).collect();
 
-        for n in &mut nodes {
-            let mut node = n.borrow();
-
-            computed_degrees.push(self.compute_degrees(&node.label));
+        for label in &labels {
+            computed_degrees.push(self.compute_degrees(label));
         }
 
         let node_count = self.get_node_count();
@@ -488,7 +404,7 @@ impl _Graph {
             .map(|(&k, &v)| (k, v as f32 / node_count as f32))
             .collect();
 
-        let mut distribution: HashMap<&str, HashMap<i32 ,f32>> = HashMap::new();
+        let mut distribution: HashMap<&'static str, HashMap<i32 ,f32>> = HashMap::new();
 
         distribution.insert("undirected_distribution", undirected_distribution);
         distribution.insert("in_distribution", in_distribution);
@@ -497,23 +413,23 @@ impl _Graph {
         return distribution;
     }
 
-    pub fn compute_entropy(&mut self) -> HashMap<&str, f32> {
-        let mut result: HashMap<&str, f32> = HashMap::new();
+    pub fn compute_entropy(&mut self) -> HashMap<&'static str, f32> {
+        let mut result: HashMap<&'static str, f32> = HashMap::new();
 
-        let dist: HashMap<&str, HashMap<i32 ,f32>> = self.get_degree_distribution();
+        let dist: HashMap<&'static str, HashMap<i32 ,f32>> = self.get_degree_distribution();
         let mut in_entropy: f32 = 0.;
         let mut out_entropy: f32 = 0.;
         let mut undirected_entropy: f32 = 0.;
 
-        for (degree, dist_value) in &dist["in_distribution"] {
+        for (_degree, dist_value) in &dist["in_distribution"] {
             in_entropy += dist_value * dist_value.ln();
         }
 
-        for (degree, dist_value) in &dist["out_distribution"] {
+        for (_degree, dist_value) in &dist["out_distribution"] {
             out_entropy += dist_value * dist_value.ln();
         }
 
-        for (degree, dist_value) in &dist["undirected_distribution"] {
+        for (_degree, dist_value) in &dist["undirected_distribution"] {
             undirected_entropy += dist_value * dist_value.ln();
         }
 
@@ -529,7 +445,7 @@ impl _Graph {
         return nodes_minus_1.ln();
     }
 
-    pub fn get_skewness(&mut self) -> HashMap<&str, f32> {
+    pub fn get_skewness(&mut self) -> HashMap<&'static str, f32> {
 
         fn _rank_degree_for_skewness(degree_collection: HashMap<String, i32>) -> Vec<(usize, i32)> {
             let mut sorted_degrees: Vec<(String, i32)> = degree_collection.into_iter().collect();
@@ -539,7 +455,7 @@ impl _Graph {
 
 
             for i in 1..=sorted_degrees.len() {
-                let (node_label, degree) = sorted_degrees[i - 1].clone();
+                let (_node_label, degree) = sorted_degrees[i - 1].clone();
                 let rank = (i, degree);
                 ranked.push(rank);
             }
@@ -585,7 +501,7 @@ impl _Graph {
             let mut mean_degrees: Vec<f32> = Vec::new();
             for ranked in ranked_degrees {
                 if !ranked.is_empty() {
-                    let degrees: Vec<i32> = ranked.iter().map(|(rank, degree)| *degree).collect();
+                    let degrees: Vec<i32> = ranked.iter().map(|(_rank, degree)| *degree).collect();
                     let total = degrees.iter().sum::<i32>() as f32;
                     let count = degrees.len() as f32;
 
@@ -607,7 +523,7 @@ impl _Graph {
             return skus;
         }
 
-        let mut result: HashMap<&str, f32> = HashMap::new();
+        let mut result: HashMap<&'static str, f32> = HashMap::new();
 
         let degrees = self.get_all_nodes_degrees();
 
@@ -631,81 +547,71 @@ impl _Graph {
      */
     pub fn dfs(&mut self, start_node_label: &str) -> Vec<String> {
         let mut final_order: Vec<String> = Vec::new();
-
         let mut visited: HashSet<String> = HashSet::new();
 
-        let mut stack: Vec<Rc<RefCell<_Node>>> = Vec::new();
-        let starting_node: Rc<RefCell<_Node>> = self.node_by_label(start_node_label).expect("Error: Initial node not found");
+        let mut stack: Vec<usize> = Vec::new();
+        let starting_idx = self.label_to_id(start_node_label).expect("Error: Initial node not found");
 
-        stack.push(starting_node);
+        stack.push(starting_idx);
 
-        while let Some(n) = stack.pop() {
-            let node = n.borrow();
+        while let Some(idx) = stack.pop() {
+            let label = self.resolve_label(idx);
 
-            if !visited.insert(node.label.clone()) {
+            if !visited.insert(label.clone()) {
                 continue;
             }
 
-            final_order.push(node.label.clone());
+            final_order.push(label);
 
-            for conn in node.connections.iter().rev() {
-                if let Some(rc_node) = conn.node.upgrade() {
-                    let conn_node = rc_node.borrow();
-
-                    if !visited.contains(&conn_node.label) {
-                        stack.push(Rc::clone(&rc_node));
-                    }
+            let neighbors = self.structure.get_neighbors_ids(idx);
+            for neighbor_idx in neighbors.into_iter().rev() {
+                let neighbor_label = self.resolve_label(neighbor_idx);
+                if !visited.contains(&neighbor_label) {
+                    stack.push(neighbor_idx);
                 }
             }
         }
 
         return final_order;
-
     }
 
     pub fn bfs(&mut self, start_node_label: &str) -> Vec<String> {
         let mut final_order: Vec<String> = Vec::new();
-
-        let mut q: VecDeque<Rc<RefCell<_Node>>> = VecDeque::new();
+        let mut q: VecDeque<usize> = VecDeque::new();
         let mut visited: HashSet<String> = HashSet::new();
 
-        let starting_node: Rc<RefCell<_Node>> = self.node_by_label(start_node_label).expect("Error: Initial node not found");
-
+        let starting_idx = self.label_to_id(start_node_label).expect("Error: Initial node not found");
 
         visited.insert(start_node_label.to_string());
-        q.push_back(starting_node);
+        q.push_back(starting_idx);
 
-        while let Some(n) = q.pop_front() {
-            let node = n.borrow();
+        while let Some(idx) = q.pop_front() {
+            let label = self.resolve_label(idx);
+            final_order.push(label);
 
-            final_order.push(node.label.clone());
-
-            for conn in &node.connections {
-                if let Some(rc_node) = conn.node.upgrade() {
-                    let conn_node = rc_node.borrow();
-
-                    if visited.insert(conn_node.label.clone()) {
-                        q.push_back(Rc::clone(&rc_node));
-                    }
+            let neighbors = self.structure.get_neighbors_ids(idx);
+            for neighbor_idx in neighbors {
+                let neighbor_label = self.resolve_label(neighbor_idx);
+                if visited.insert(neighbor_label) {
+                    q.push_back(neighbor_idx);
                 }
             }
         }
-
 
         return final_order;
     }
 
     pub fn dijkstra(&mut self, start_node_label: &str) -> HashMap<String, f64>{
-        let size = self.nodes.len();
-        let node_ref = self.node_by_label(start_node_label).expect("Node not found");
+        let size = self.get_node_count();
+        let _start_idx = self.label_to_id(start_node_label).expect("Node not found");
         let mut distances: HashMap<String, f64> = HashMap::new();
 
         for i in 0..size {
-            let lbl = self.nodes[i].borrow().label.clone();
+            let lbl = self.resolve_label(i);
             distances.insert(lbl, f64::INFINITY);
         }
 
-        distances.insert(node_ref.borrow().label.clone(), 0.);
+        distances.insert(start_node_label.to_string(), 0.);
 
         let mut visited = vec![false; size];
         let adj_matrix = self.generate_adjacency_matrix();
@@ -715,64 +621,178 @@ impl _Graph {
             let mut u: Option<usize> = None;
 
             for i in 0..size {
-                if !visited[i] && distances[&self.nodes[i].borrow().label] < min_distance {
-                    min_distance = distances[&self.nodes[i].borrow().label];
+                let lbl = self.resolve_label(i);
+                if !visited[i] && distances[&lbl] < min_distance {
+                    min_distance = distances[&lbl];
                     u = Some(i);
                 }
             }
 
-            if u == None {
+            if u.is_none() {
                 break;
             }
             let u: usize = u.unwrap();
             visited[u] = true;
 
-
             for v in 0..size {
                 if adj_matrix[u][v] != 0. && !visited[v] {
-                    let alt = distances[&self.nodes[u].borrow().label] as f32 + adj_matrix[u][v];
-                    if alt < distances[&self.nodes[v].borrow().label] as f32{
-                        distances.insert(self.nodes[v].borrow().label.clone(), alt as f64);
+                    let u_lbl = self.resolve_label(u);
+                    let v_lbl = self.resolve_label(v);
+
+                    let alt = distances[&u_lbl] as f32 + adj_matrix[u][v];
+                    if alt < distances[&v_lbl] as f32 {
+                        distances.insert(v_lbl.clone(), alt as f64);
                     }
                 }
             }
         }
 
         return distances;
+    }
 
+    pub fn get_nodes_for_render(&self) -> Vec<_Node> {
+        let count = self.structure.node_count();
+        if !self.structure.manages_labels() && self.metadata.node_info.len() == count {
+            return self.metadata.node_info.clone();
+        }
+
+        return (0..count).map(|i| {
+            let (x, y) = if self.structure.manages_positions() {
+                self.structure.get_node_position(i)
+                    .map(|(px, py)| (Some(px), Some(py)))
+                    .unwrap_or((None, None))
+            } else {
+                (None, None)
+            };
+            _Node {
+                label: self.resolve_label(i),
+                index: Some(i),
+                x,
+                y,
+            }
+        }).collect();
     }
 
     pub fn output_svg(&mut self, layout: Layout, override_positions: bool, style: GraphStyle) -> String {
+        let edges: Vec<(usize, usize)> = self.structure.get_all_edges()
+            .map(|(u, v, _, _)| (u, v))
+            .collect();
+
+        let mut render_nodes = self.get_nodes_for_render();
+
+        if !self.positions_set || override_positions {
+            let layout_func = get_layout_function(layout);
+            layout_func(&mut render_nodes, &edges);
+
+            if self.structure.manages_positions() {
+                for node in &render_nodes {
+                    if let (Some(idx), Some(x), Some(y)) = (node.index, node.x, node.y) {
+                        self.structure.set_node_position(idx, x, y);
+                    }
+                }
+            } else if self.metadata.node_info.len() == render_nodes.len() {
+                for (dst, src) in self.metadata.node_info.iter_mut().zip(render_nodes.iter()) {
+                    dst.x = src.x;
+                    dst.y = src.y;
+                }
+            }
+
+            self.positions_set = true;
+        } else if !self.structure.manages_positions() && self.metadata.node_info.len() == render_nodes.len() {
+            for (dst, src) in render_nodes.iter_mut().zip(self.metadata.node_info.iter()) {
+                dst.x = src.x;
+                dst.y = src.y;
+            }
+        }
+
         let mut svg: Svg = Svg::new();
         let connections = self.get_connections(None, None, false);
-        let svg_string = svg.get_svg(&self.nodes, &connections, layout, self.positions_set, override_positions, style);
+
+        let mut svg_nodes = render_nodes.clone();
+        for node in &mut svg_nodes {
+            if let (Some(x), Some(y)) = (node.x, node.y) {
+                node.x = Some(denormalize_x(x));
+                node.y = Some(denormalize_y(y));
+            }
+        }
+
+        let svg_string = svg.get_svg(
+            &svg_nodes,
+            &connections,
+            style
+        );
         return svg_string;
     }
 
-    pub fn output_html(&mut self, file_name: &str, layout: Layout, override_positions: bool, style: GraphStyle) {
-        let svg_string = self.output_svg(layout, override_positions, style);
-        let html_writer = HtmlWriter{};
-        html_writer.write_file(file_name, &svg_string).expect("Error while creating the file");
+    pub fn output_html(&mut self, file_name: &str, layout: Layout, override_positions: bool, _style: GraphStyle) {
+        let edges_simple: Vec<(usize, usize)> = self.structure.get_all_edges()
+            .map(|(u, v, _, _)| (u, v))
+            .collect();
+
+        let mut render_nodes = self.get_nodes_for_render();
+
+        if !self.positions_set || override_positions {
+            let layout_func = get_layout_function(layout);
+            layout_func(&mut render_nodes, &edges_simple);
+
+            if self.structure.manages_positions() {
+                for node in &render_nodes {
+                    if let (Some(idx), Some(x), Some(y)) = (node.index, node.x, node.y) {
+                        self.structure.set_node_position(idx, x, y);
+                    }
+                }
+            } else if self.metadata.node_info.len() == render_nodes.len() {
+                for (dst, src) in self.metadata.node_info.iter_mut().zip(render_nodes.iter()) {
+                    dst.x = src.x;
+                    dst.y = src.y;
+                }
+            }
+
+            self.positions_set = true;
+        } else if !self.structure.manages_positions() && self.metadata.node_info.len() == render_nodes.len() {
+            for (dst, src) in render_nodes.iter_mut().zip(self.metadata.node_info.iter()) {
+                dst.x = src.x;
+                dst.y = src.y;
+            }
+        }
+
+        let graph_data = generate_visualization(&render_nodes, self.structure.get_all_edges());
+
+        write_html(file_name, &graph_data).expect("Error while creating the file");
     }
 
     pub fn output_net_file(&mut self, path: &str) {
-        write_net_file(path, self.nodes.clone()).expect("Error while creating the file");
+        let nodes = self.get_nodes_for_render();
+        let edges: Vec<(usize, usize, f32, bool)> = self.structure.get_all_edges().collect();
+        write_net_file(path, nodes, &edges).expect("Error while creating the file");
     }
 
     pub fn output_json_file(&mut self, path: &str) {
-        write_json_file(path, self.nodes.clone()).expect("Error while creating the file");
+        let nodes = self.get_nodes_for_render();
+        let edges: Vec<(usize, usize, f32, bool)> = self.structure.get_all_edges().collect();
+        write_json_file(path, nodes, &edges).expect("Error while creating the file");
+    }
+
+    pub fn output_mtx_file(&mut self, path: &str) {
+        let n_nodes = self.structure.node_count();
+        let n_edges = self.get_edge_count();
+        write_mtx_file(path, n_nodes, n_edges, self.structure.get_all_edges()).expect("Error while creating the file");
+    }
+
+    pub fn output_edge_list_file(&mut self, path: &str) {
+        let nodes = self.get_nodes_for_render();
+        write_edge_list_file(path, &nodes, self.structure.get_all_edges()).expect("Error while creating the file");
     }
 }
 
 
-impl _Graph {
+impl<S: IGraphStructure + Default> _Graph<S> {
     pub fn default() -> Self {
         return _Graph {
-            nodes: Vec::new(),
+            metadata: GraphMetadata::new(),
+            structure: S::default(),
             positions_set: false,
             build_time_ms: None,
-            _current_index: 0,
-            _node_label_hack: HashMap::new()
         };
     }
 
@@ -800,28 +820,55 @@ impl _Graph {
         return new_graph;
     }
 
+    pub fn from_mtx_file(path: &str) -> Self {
+        let start = Instant::now();
+
+        let mut new_graph = read_mtx_file(path).expect("Failed to read .mtx file");
+
+        let duration = start.elapsed();
+
+        new_graph.build_time_ms = Some(duration.as_secs_f64() * 1000.0);
+
+        return new_graph;
+    }
+
+    pub fn from_edge_list_file(path: &str, directed: bool) -> Self {
+        let start = Instant::now();
+
+        let mut new_graph = read_edge_list_file(path, directed).expect("Failed to read edge list file");
+
+        let duration = start.elapsed();
+
+        new_graph.build_time_ms = Some(duration.as_secs_f64() * 1000.0);
+
+        return new_graph;
+    }
+
     pub fn from_adjacency_matrix(adj_matrix: Vec<Vec<f32>>, directed: Option<bool>, custom_labels: Option<Vec<String>>) -> Self {
         let start = Instant::now();
         let mut adj_matrix_graph = _Graph::default();
 
-        let (node_list, hash_hack) = create_nodes_from_labels(adj_matrix.len(), custom_labels);
-        adj_matrix_graph.nodes = node_list;
-        adj_matrix_graph._node_label_hack = hash_hack;
-        let node_hash = create_node_hashmap(&adj_matrix_graph.nodes, 0);
+        let labels = custom_labels.unwrap_or_else(|| {
+            (0..adj_matrix.len()).map(|x| x.to_string()).collect()
+        });
+
+        for label in labels {
+            adj_matrix_graph.add_node(label);
+        }
 
         for i in 0..adj_matrix.len() {
             for j in 0..adj_matrix.len() {
+                if !directed.unwrap_or(false) && j < i {
+                    continue;
+                }
+
                 let weight = adj_matrix[i][j];
 
                 if weight != 0. {
-                    adj_matrix_graph.create_connection(
-                        node_hash.get(&i).expect("Node not found").clone(),
-                        node_hash.get(&j).expect("Node not found").clone(),
-                        weight,
-                        directed
-                    );
+                    let from_label = adj_matrix_graph.resolve_label(i);
+                    let to_label = adj_matrix_graph.resolve_label(j);
+                    adj_matrix_graph.create_connection(from_label, to_label, weight, directed);
                 }
-
             }
         }
 
@@ -859,5 +906,26 @@ impl _Graph {
         );
 
         return graph;
+    }
+
+    pub fn from_overpass_address(address: String, radius: f64) -> Self {
+        let point = get_point_from_address(address).expect("Request to Nominatim failed!");
+        let graph = make_overpass_graph(radius, point);
+
+        return graph;
+    }
+
+    pub fn from_synthetic(graph_type: SyntheticGraphType) -> Self {
+        match graph_type {
+            SyntheticGraphType::ErdosRenyi { n, p } => {
+                return erdos_renyi::generate_erdos_renyi(n, p);
+            }
+            SyntheticGraphType::BarabasiAlbert { n, m } => {
+                return barabasi_albert::generate_barabasi_albert(n, m);
+            }
+            SyntheticGraphType::WattsStrogatz { n, k, beta } => {
+                return watts_strogatz::generate_watts_strogatz(n, k, beta);
+            }
+        }
     }
 }

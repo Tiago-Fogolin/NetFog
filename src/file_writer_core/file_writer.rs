@@ -1,76 +1,43 @@
-use std::{fs, io};
-use std::io::Error;
-use std::rc::Rc;
-use std::cell::RefCell;
+use std::fs;
+use std::io::{BufWriter, Error, Write};
 use crate::{_Node};
-use crate::layout::layout::{normalize_x, normalize_y};
 use crate::file_reader_core::file_reader::{JsonConnection, JsonGraph, JsonNode};
 use std::fs::File;
-use std::io::BufWriter;
 
-fn read_template(path: &str) -> io::Result<String> {
-    return fs::read_to_string(path);
-}
 
-pub trait Writeable {
-    fn write_file(&self, path: &str, content: &str) -> Result<(), Error>;
-}
+pub fn write_html(path: &str, content: &str) -> Result<(), Error> {
+    let html_string = include_str!("../file_writer_core/template.html");
+    let js_string = include_str!("../file_writer_core/script.js");
 
-pub struct HtmlWriter {}
+    let html_with_data = html_string.replace("ESCAPE_GRAPH_DATA", content);
+    let final_string = html_with_data.replace("ESCAPE_SCRIPT", &js_string);
 
-impl Writeable for HtmlWriter {
-    fn write_file(&self, path: &str, content: &str) -> Result<(), Error> {
-        let html_string = include_str!("../file_writer_core/template.html");
-        let js_string = include_str!("../file_writer_core/script.js");
+    fs::write(path, final_string)?;
 
-        let html_with_svg = html_string.replace("ESCAPE_SVG", content);
-        let final_string = html_with_svg.replace("ESCAPE_SCRIPT", &js_string);
-
-        fs::write(path, final_string)?;
-
-        return Ok(());
-    }
+    return Ok(());
 }
 
 
-pub fn write_net_file(path: &str, nodes: Vec<Rc<RefCell<_Node>>>) -> Result<(), Error>{
+pub fn write_net_file(path: &str, nodes: Vec<_Node>, all_edges: &[(usize, usize, f32, bool)]) -> Result<(), Error>{
     let mut content_string: String = String::new();
 
     let mut edges: Vec<(usize,usize,f32)> = Vec::new();
     let mut arcs: Vec<(usize,usize,f32)> = Vec::new();
 
     content_string += "*Vertices\n";
-    for n in &nodes {
-        let node = n.borrow();
-        content_string += &format!("{} \"{}\"", node.index.unwrap(), node.label);
+    for node in &nodes {
+        content_string += &format!("{} \"{}\"", node.index.unwrap_or(0), node.label);
         if !node.x.is_none() && !node.y.is_none() {
-            content_string += &format!(" {} {}", normalize_x(node.x.unwrap()), normalize_y(node.y.unwrap()));
+            content_string += &format!(" {} {}", node.x.unwrap(), node.y.unwrap());
         }
         content_string += "\n";
+    }
 
-        for conn in node.connections.iter() {
-            if let Some(rc_node) = conn.node.upgrade() {
-                let connected_node = rc_node.borrow();
-
-                if conn.directed {
-                    arcs.push(
-                        (
-                            node.index.unwrap(),
-                            connected_node.index.unwrap(),
-                            conn.weight
-                        )
-                    );
-                }
-                else {
-                    edges.push(
-                        (
-                            node.index.unwrap(),
-                            connected_node.index.unwrap(),
-                            conn.weight
-                        )
-                    );
-                }
-            }
+    for &(from_index, to_index, weight, directed) in all_edges {
+        if directed {
+            arcs.push((from_index, to_index, weight));
+        } else {
+            edges.push((from_index, to_index, weight));
         }
     }
 
@@ -93,37 +60,31 @@ pub fn write_net_file(path: &str, nodes: Vec<Rc<RefCell<_Node>>>) -> Result<(), 
     return Ok(());
 }
 
-pub fn write_json_file(path: &str, nodes: Vec<Rc<RefCell<_Node>>>) -> Result<(), Error>{
+pub fn write_json_file(path: &str, nodes: Vec<_Node>, all_edges: &[(usize, usize, f32, bool)]) -> Result<(), Error>{
     let mut json_nodes: Vec<JsonNode> = Vec::new();
     let mut json_edges: Vec<JsonConnection> = Vec::new();
     let mut json_arcs: Vec<JsonConnection> = Vec::new();
 
-    for n in &nodes {
-        let node = n.borrow();
-
+    for node in &nodes {
         let json_node = JsonNode {
             label: node.label.clone(),
             x: node.x,
             y: node.y
         };
         json_nodes.push(json_node);
+    }
 
-        for conn in node.connections.iter() {
-            if let Some(rc_node) = conn.node.upgrade() {
-                let connected_node = rc_node.borrow();
-                let json_conn = JsonConnection {
-                    source: node.label.clone(),
-                    target: connected_node.label.clone(),
-                    weight: conn.weight
-                };
+    for &(from_index, to_index, weight, directed) in all_edges {
+        let json_conn = JsonConnection {
+            source: nodes[from_index].label.clone(),
+            target: nodes[to_index].label.clone(),
+            weight: weight,
+        };
 
-                if conn.directed {
-                    json_arcs.push(json_conn);
-                }
-                else {
-                    json_edges.push(json_conn);
-                }
-            }
+        if directed {
+            json_arcs.push(json_conn);
+        } else {
+            json_edges.push(json_conn);
         }
     }
 
@@ -137,6 +98,35 @@ pub fn write_json_file(path: &str, nodes: Vec<Rc<RefCell<_Node>>>) -> Result<(),
     let writer = BufWriter::new(file);
 
     serde_json::to_writer_pretty(writer, &json_graph)?;
+
+    return Ok(());
+}
+
+pub fn write_mtx_file(path: &str, n_nodes: usize, n_edges: usize, all_edges: impl Iterator<Item=(usize, usize, f32, bool)>) -> Result<(), Error> {
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+
+    writeln!(writer, "%%MatrixMarket matrix coordinate real general")?;
+    writeln!(writer, "% Generated by netfog")?;
+    writeln!(writer, "{} {} {}", n_nodes, n_nodes, n_edges)?;
+
+    for (from_idx, to_idx, weight, _directed) in all_edges {
+        writeln!(writer, "{} {} {}", from_idx + 1, to_idx + 1, weight)?;
+    }
+
+    return Ok(());
+}
+
+pub fn write_edge_list_file(path: &str, nodes: &[_Node], all_edges: impl Iterator<Item=(usize, usize, f32, bool)>) -> Result<(), Error> {
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+
+    for (from_idx, to_idx, weight, _directed) in all_edges {
+        let from_label = &nodes[from_idx].label;
+        let to_label = &nodes[to_idx].label;
+
+        writeln!(writer, "{}\t{}\t{}", from_label, to_label, weight)?;
+    }
 
     return Ok(());
 }

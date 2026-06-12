@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teste</title>
+    <title>NetFog Graph</title>
     <style>
-
         html, body {
             margin: 0;
             padding: 0;
@@ -19,8 +18,7 @@
             font-size: 18px;
         }
 
-        svg {
-            display: block;
+        #graph {
             width: 100%;
             height: 100%;
         }
@@ -41,7 +39,6 @@
             height: 50px;
         }
 
-
         .side-menu {
             position: fixed;
             top: 0;
@@ -56,19 +53,15 @@
             box-sizing: border-box;
         }
 
-
         .side-menu.open {
             right: 0;
         }
     </style>
 </head>
 <body>
-    ESCAPE_SVG
-
-
+    <div id="graph"></div>
 
     <button class="menu-btn" onclick="toggleMenu()">☰</button>
-
 
     <div class="side-menu" id="sideMenu">
         <h2>Menu</h2>
@@ -76,6 +69,8 @@
         <button onclick="writePajek()">Download Pajek</button>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/netfogvis@1.1.1/dist/netfog-viewer.umd.js"></script>
+    <script>const GRAPH_DATA = ESCAPE_GRAPH_DATA;</script>
     <script>ESCAPE_SCRIPT</script>
 </body>
 </html>

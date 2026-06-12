@@ -1,27 +1,18 @@
 use crate::_Node;
 use crate::graph_core::graph::{ConnectionsList, ConnectionProperty};
-use crate::layout::layout::{Layout, get_layout_function};
 use crate::layout::style::{GraphStyle, get_line_width};
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::f64;
-use std::rc::Rc;
-use std::fmt::{self, format};
+use std::fmt;
 
 const LABEL_OFFSET: f64 = 35.;
 
+fn create_node_hashmap(nodes: &[_Node]) -> HashMap<String, &_Node> {
+    let mut node_map: HashMap<String, &_Node> = HashMap::new();
 
-fn create_node_hashmap(nodes: &Vec<Rc<RefCell<_Node>>>) -> HashMap<String, Rc<RefCell<_Node>>> {
-    let mut node_map: HashMap<String, Rc<RefCell<_Node>>> = HashMap::new();
-
-    for n in nodes {
-        let node_handle = Rc::clone(n);
-        let label = node_handle.borrow().label.clone();
-
-
-        node_map.insert(label, node_handle);
+    for node in nodes {
+        node_map.insert(node.label.clone(), node);
     }
-
 
     return node_map;
 }
@@ -29,8 +20,7 @@ fn create_node_hashmap(nodes: &Vec<Rc<RefCell<_Node>>>) -> HashMap<String, Rc<Re
 enum AtributeValue {
     Text(String),
     Decimal(f64),
-    Integer(i32),
-    Boolean(bool)
+    Integer(i32)
 }
 
 impl fmt::Display for AtributeValue {
@@ -38,8 +28,7 @@ impl fmt::Display for AtributeValue {
         match self {
             AtributeValue::Text(val) => write!(f, "{}", val),
             AtributeValue::Decimal(val) => write!(f, "{}", val),
-            AtributeValue::Integer(val) => write!(f, "{}", val),
-            AtributeValue::Boolean(val) => write!(f, "{}", val),
+            AtributeValue::Integer(val) => write!(f, "{}", val)
         }
     }
 }
@@ -224,28 +213,27 @@ impl Svg {
 
     fn draw_nodes(
         &mut self,
-        nodes: &Vec<Rc<RefCell<_Node>>>,
+        nodes: &[_Node],
         node_color: &str,
         node_border: &str,
         node_radius: i32
     ) {
-        for n in nodes {
-            let node = n.borrow();
+        for node in nodes {
             if let (Some(x), Some(y)) = (node.x, node.y) {
                 if x < self.min_x { self.min_x = x; }
                 if x > self.max_x { self.max_x = x; }
                 if y < self.min_y { self.min_y = y; }
                 if y > self.max_y { self.max_y = y; }
             }
-            self.add_circle(&node, node_color, node_border, node_radius);
-            self.add_label(&node);
+            self.add_circle(node, node_color, node_border, node_radius);
+            self.add_label(node);
         }
     }
 
     fn draw_lines(
         &mut self,
         connections: &ConnectionsList,
-        node_map: HashMap<String, Rc<RefCell<_Node>>>,
+        node_map: &HashMap<String, &_Node>,
         line_color: &str,
         min_weight: f32,
         max_weight: f32,
@@ -265,13 +253,12 @@ impl Svg {
                 match property {
                     ConnectionProperty::From(name) => from_name = Some(name),
                     ConnectionProperty::To(name) => to_name = Some(name),
-                    ConnectionProperty::Directed(bool) => directed = *bool,
+                    ConnectionProperty::Directed(b) => directed = *b,
                     ConnectionProperty::Weight(w) => weight = *w,
-                    _ => {}
                 }
             }
-            let from = node_map[from_name.unwrap()].borrow();
-            let to = node_map[to_name.unwrap()].borrow();
+            let from = node_map[from_name.unwrap()];
+            let to = node_map[to_name.unwrap()];
 
             let line_pos = ElementPostion {
                 x1: from.x.unwrap(),
@@ -300,19 +287,11 @@ impl Svg {
 
     fn draw_graph(
         &mut self,
-        nodes: &Vec<Rc<RefCell<_Node>>>,
+        nodes: &[_Node],
         connections: &ConnectionsList,
-        layout: Layout,
-        positions_set: bool,
-        override_positions: bool,
-        node_map: HashMap<String, Rc<RefCell<_Node>>>,
+        node_map: HashMap<String, &_Node>,
         style: GraphStyle
     ) {
-        if !positions_set || override_positions {
-            let layout_func = get_layout_function(layout);
-            layout_func(&nodes);
-        }
-
         let min_weight = 1.;
         let max_weight = connections.iter()
             .filter_map(|conn| conn.get("Weight"))
@@ -322,7 +301,7 @@ impl Svg {
             .unwrap_or(1.0);
 
         self.add_arrow_def(style.marker_svg, style.marker_fill, style.marker_width, style.marker_height);
-        self.draw_lines(connections, node_map, &style.line_color, min_weight, max_weight, style.line_min_width, style.line_max_width, style.dynamic_line_size);
+        self.draw_lines(connections, &node_map, &style.line_color, min_weight, max_weight, style.line_min_width, style.line_max_width, style.dynamic_line_size);
         self.draw_nodes(nodes, &style.node_color, &style.node_border, style.node_radius);
 
     }
@@ -405,11 +384,8 @@ impl Svg {
 
     pub fn get_svg(
         &mut self,
-        nodes: &Vec<Rc<RefCell<_Node>>>,
+        nodes: &[_Node],
         connections: &ConnectionsList,
-        layout: Layout,
-        positions_set: bool,
-        override_positions: bool,
         style: GraphStyle
     ) -> String {
         // TODO -> Remove this workaround
@@ -417,7 +393,7 @@ impl Svg {
         // But in future this will be changed, so we get a better performance
         let node_map = create_node_hashmap(nodes);
 
-        self.draw_graph(nodes, connections, layout, positions_set, override_positions, node_map, style);
+        self.draw_graph(nodes, connections, node_map, style);
 
         let svg = self.write_svg();
 

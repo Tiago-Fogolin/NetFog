@@ -8,6 +8,9 @@ This section explains how to **compute metrics and statistics** of a graph in Ne
 
 **Methods:**
 
+- `generate_adjacency_matrix() -> list[list[float]]`  
+  Returns the graph's adjacency matrix as a 2-D Python list of floats.
+
 - `get_total_weight() -> float`  
 Returns the sum of the weights of all edges in the graph.
 
@@ -39,7 +42,7 @@ Returns the density of the graph.
 - `get_average_degree() -> float`  
   Returns the average degree of the graph.
 
-- `get_centrality_degree(node_label: str) -> dict`  
+- `get_centrality_degrees(node_label: str) -> dict`  
   Returns the normalized degree centrality for a given node. The values are calculated by dividing each degree metric by $(N - 1)$, where $N$ is the total number of nodes.
 
 - `get_node_strength(node_label: str) -> dict`  
