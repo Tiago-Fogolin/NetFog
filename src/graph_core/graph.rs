@@ -44,7 +44,7 @@ pub struct _Graph<S: IGraphStructure = AdjacencyList> {
 
 
 impl<S: IGraphStructure> _Graph<S> {
-    fn label_to_id(&self, label: &str) -> Option<usize> {
+    pub fn label_to_id(&self, label: &str) -> Option<usize> {
         if self.structure.manages_labels() {
             self.structure.get_id_by_label(label)
         } else {
@@ -118,18 +118,74 @@ impl<S: IGraphStructure> _Graph<S> {
         self.structure.create_connection(from_idx, to_idx, weight, directed);
     }
 
-    pub fn batch_add_nodes(&mut self, labels: Vec<String>) {
-        for label in labels {
-            self.add_node(label);
-        }
+    pub fn create_connection_by_id(&mut self, from: usize, to: usize, weight: f32, directed: Option<bool>) {
+        self.structure.create_connection(from, to, weight, directed);
     }
 
-    pub fn batch_create_connections(&mut self, connections: Vec<(String, String, f32, Option<bool>)>) {
+    pub fn batch_add_nodes(&mut self, labels: Vec<&str>) {
+        if self.structure.manages_labels() {
+            for label in labels {
+                self.add_node(label.to_string());
+            }
+            return;
+        }
+
+        self.metadata.label_id_map.reserve(labels.len());
+        self.metadata.node_info.reserve(labels.len());
+
+        let base_index = self.structure.node_count();
+        let mut added_count: usize = 0;
+
+        for label in labels {
+            if self.metadata.label_id_map.contains_key(label) {
+                println!("Node with label '{}' already exists!", label);
+                continue;
+            }
+
+            let index = base_index + added_count;
+            let owned_label = label.to_owned();
+
+            let new_node = _Node {
+                label: owned_label.clone(),
+                index: Some(index),
+                x: None,
+                y: None,
+            };
+
+            self.metadata.label_id_map.insert(owned_label, index);
+            self.metadata.node_info.push(new_node);
+            added_count += 1;
+        }
+
+        self.structure.batch_add_nodes(added_count);
+    }
+
+    pub fn batch_add_anonymous_nodes(&mut self, count: usize) {
+        self.metadata.node_info.reserve(count);
+        let base_index = self.structure.node_count();
+
+        for i in 0..count {
+            self.metadata.node_info.push(_Node {
+                label: String::new(),
+                index: Some(base_index + i),
+                x: None,
+                y: None,
+            });
+        }
+
+        self.structure.batch_add_nodes(count);
+    }
+
+    pub fn batch_create_connections_from_ids(&mut self, connections: &[(usize, usize, f32, bool)]) {
+        self.structure.batch_create_connections(connections);
+    }
+
+    pub fn batch_create_connections(&mut self, connections: Vec<(&str, &str, f32, Option<bool>)>) {
         let mut mapped_edges = Vec::with_capacity(connections.len());
 
         for (from, to, weight, directed) in connections {
-            let from_idx = self.label_to_id(&from).unwrap_or_else(|| panic!("Node '{}' not found", from));
-            let to_idx = self.label_to_id(&to).unwrap_or_else(|| panic!("Node '{}' not found", to));
+            let from_idx = self.label_to_id(from).unwrap_or_else(|| panic!("Node '{}' not found", from));
+            let to_idx = self.label_to_id(to).unwrap_or_else(|| panic!("Node '{}' not found", to));
 
             let is_directed = directed.unwrap_or(false);
             mapped_edges.push((from_idx, to_idx, weight, is_directed));
@@ -146,13 +202,28 @@ impl<S: IGraphStructure> _Graph<S> {
         self.metadata.label_id_map.get(label).copied().map(move |idx| &mut self.metadata.node_info[idx])
     }
 
+    pub fn node_by_id(&self, id: usize) -> Option<_Node> {
+        if self.structure.manages_labels() {
+            let label = self.structure.resolve_label(id)?;
+            let (x, y) = self.structure.get_node_position(id)
+                .map(|(px, py)| (Some(px), Some(py)))
+                .unwrap_or((None, None));
+            return Some(_Node { label, index: Some(id), x, y });
+        }
+
+        return self.metadata.node_info.get(id).cloned();
+    }
+
     pub fn resolve_label(&self, id: usize) -> String {
         if let Some(label) = self.structure.resolve_label(id) {
             return label;
         }
 
         if id < self.metadata.node_info.len() {
-            return self.metadata.node_info[id].label.clone();
+            let label = &self.metadata.node_info[id].label;
+            if !label.is_empty() {
+                return label.clone();
+            }
         }
 
         return format!("{}", id);
@@ -244,17 +315,12 @@ impl<S: IGraphStructure> _Graph<S> {
         return self.get_total_weight() as f32 / self.get_edge_count() as f32;
     }
 
-    pub fn compute_degrees(&mut self, node_label: &str) -> HashMap<String, i32> {
+    pub fn compute_degrees_by_id(&mut self, target_idx: usize) -> HashMap<String, i32> {
         let mut degrees: HashMap<String, i32> = HashMap::new();
         degrees.insert("in_degree".to_string(), 0);
         degrees.insert("out_degree".to_string(), 0);
         degrees.insert("total_degree".to_string(), 0);
         degrees.insert("undirected_degree".to_string(), 0);
-
-        let target_idx = match self.label_to_id(node_label) {
-            Some(idx) => idx,
-            None => return degrees,
-        };
 
         let edges = self.structure.get_all_edges();
 
@@ -279,16 +345,34 @@ impl<S: IGraphStructure> _Graph<S> {
         return degrees;
     }
 
+    pub fn compute_degrees(&mut self, node_label: &str) -> HashMap<String, i32> {
+        let target_idx = match self.label_to_id(node_label) {
+            Some(idx) => idx,
+            None => {
+                let mut degrees: HashMap<String, i32> = HashMap::new();
+                degrees.insert("in_degree".to_string(), 0);
+                degrees.insert("out_degree".to_string(), 0);
+                degrees.insert("total_degree".to_string(), 0);
+                degrees.insert("undirected_degree".to_string(), 0);
+                return degrees;
+            },
+        };
+
+        return self.compute_degrees_by_id(target_idx);
+    }
+
+    /// Itera por id em vez de dar a volta por label -> compute_degrees(label)
+    /// -> label_to_id de novo. Além de ser mais rápido (sem hashing de string
+    /// por nó), evita o bug de nós anônimos (label vazia) colidindo todos no
+    /// mesmo id ao resolver o label de volta.
     pub fn get_all_nodes_degrees(&mut self) -> HashMap<String, HashMap<String, i32>> {
         let mut degree_hash: HashMap<String, HashMap<String, i32>> = HashMap::new();
+        let count = self.get_node_count();
 
-        let labels: Vec<String> = (0..self.get_node_count())
-            .map(|i| self.resolve_label(i))
-            .collect();
-
-        for label in labels {
-            let degree = self.compute_degrees(&label);
-            degree_hash.insert(label,degree);
+        for i in 0..count {
+            let label = self.resolve_label(i);
+            let degree = self.compute_degrees_by_id(i);
+            degree_hash.insert(label, degree);
         }
 
         return degree_hash;
@@ -311,16 +395,11 @@ impl<S: IGraphStructure> _Graph<S> {
         return mean;
     }
 
-    pub fn get_node_strength(&mut self, node_label: &str) -> HashMap<&'static str, f32> {
+    pub fn get_node_strength_by_id(&mut self, target_idx: usize) -> HashMap<&'static str, f32> {
         let mut strengths: HashMap<&str, f32> = HashMap::new();
         strengths.insert("out_strength", 0.);
         strengths.insert("in_strength", 0.);
         strengths.insert("total_strength", 0.);
-
-        let target_idx = match self.label_to_id(node_label) {
-            Some(idx) => idx,
-            None => return strengths,
-        };
 
         let edges = self.structure.get_all_edges();
 
@@ -345,11 +424,23 @@ impl<S: IGraphStructure> _Graph<S> {
         return strengths;
     }
 
-    pub fn get_centrality_degrees(&mut self, node_label: &str) -> HashMap<&'static str, f32> {
-        let mut centralities: HashMap<&str, f32> = HashMap::new();
+    pub fn get_node_strength(&mut self, node_label: &str) -> HashMap<&'static str, f32> {
+        let target_idx = match self.label_to_id(node_label) {
+            Some(idx) => idx,
+            None => {
+                let mut strengths: HashMap<&str, f32> = HashMap::new();
+                strengths.insert("out_strength", 0.);
+                strengths.insert("in_strength", 0.);
+                strengths.insert("total_strength", 0.);
+                return strengths;
+            },
+        };
 
-        let degrees = self.compute_degrees(node_label);
-        let node_count = self.get_node_count();
+        return self.get_node_strength_by_id(target_idx);
+    }
+
+    fn centrality_from_degrees(degrees: &HashMap<String, i32>, node_count: usize) -> HashMap<&'static str, f32> {
+        let mut centralities: HashMap<&str, f32> = HashMap::new();
 
         if node_count <= 1 {
             return centralities;
@@ -363,16 +454,26 @@ impl<S: IGraphStructure> _Graph<S> {
         return centralities;
     }
 
+    pub fn get_centrality_degrees_by_id(&mut self, target_idx: usize) -> HashMap<&'static str, f32> {
+        let degrees = self.compute_degrees_by_id(target_idx);
+        let node_count = self.get_node_count();
+        return Self::centrality_from_degrees(&degrees, node_count);
+    }
+
+    pub fn get_centrality_degrees(&mut self, node_label: &str) -> HashMap<&'static str, f32> {
+        let degrees = self.compute_degrees(node_label);
+        let node_count = self.get_node_count();
+        return Self::centrality_from_degrees(&degrees, node_count);
+    }
+
     pub fn get_degree_distribution(&mut self) -> HashMap<&'static str, HashMap<i32 ,f32>>{
         let mut computed_degrees: Vec<HashMap<String, i32>> = Vec::new();
 
-        let labels: Vec<String> = (0..self.get_node_count()).map(|i| self.resolve_label(i)).collect();
-
-        for label in &labels {
-            computed_degrees.push(self.compute_degrees(label));
-        }
-
         let node_count = self.get_node_count();
+
+        for i in 0..node_count {
+            computed_degrees.push(self.compute_degrees_by_id(i));
+        }
         let mut count_in_degree: HashMap<i32, i32> = HashMap::new();
         let mut count_out_degree: HashMap<i32, i32> = HashMap::new();
         let mut count_undirected_degree: HashMap<i32, i32> = HashMap::new();
@@ -545,28 +646,21 @@ impl<S: IGraphStructure> _Graph<S> {
      * is that it'll be able to get a function that will be applied to each
      * node in the future (same thing to bfs)
      */
-    pub fn dfs(&mut self, start_node_label: &str) -> Vec<String> {
-        let mut final_order: Vec<String> = Vec::new();
-        let mut visited: HashSet<String> = HashSet::new();
-
-        let mut stack: Vec<usize> = Vec::new();
-        let starting_idx = self.label_to_id(start_node_label).expect("Error: Initial node not found");
-
-        stack.push(starting_idx);
+    pub fn dfs_by_id(&mut self, start_idx: usize) -> Vec<usize> {
+        let mut final_order: Vec<usize> = Vec::new();
+        let mut visited: HashSet<usize> = HashSet::new();
+        let mut stack: Vec<usize> = vec![start_idx];
 
         while let Some(idx) = stack.pop() {
-            let label = self.resolve_label(idx);
-
-            if !visited.insert(label.clone()) {
+            if !visited.insert(idx) {
                 continue;
             }
 
-            final_order.push(label);
+            final_order.push(idx);
 
             let neighbors = self.structure.get_neighbors_ids(idx);
             for neighbor_idx in neighbors.into_iter().rev() {
-                let neighbor_label = self.resolve_label(neighbor_idx);
-                if !visited.contains(&neighbor_label) {
+                if !visited.contains(&neighbor_idx) {
                     stack.push(neighbor_idx);
                 }
             }
@@ -575,24 +669,25 @@ impl<S: IGraphStructure> _Graph<S> {
         return final_order;
     }
 
-    pub fn bfs(&mut self, start_node_label: &str) -> Vec<String> {
-        let mut final_order: Vec<String> = Vec::new();
-        let mut q: VecDeque<usize> = VecDeque::new();
-        let mut visited: HashSet<String> = HashSet::new();
-
+    pub fn dfs(&mut self, start_node_label: &str) -> Vec<String> {
         let starting_idx = self.label_to_id(start_node_label).expect("Error: Initial node not found");
+        return self.dfs_by_id(starting_idx).into_iter().map(|idx| self.resolve_label(idx)).collect();
+    }
 
-        visited.insert(start_node_label.to_string());
-        q.push_back(starting_idx);
+    pub fn bfs_by_id(&mut self, start_idx: usize) -> Vec<usize> {
+        let mut final_order: Vec<usize> = Vec::new();
+        let mut q: VecDeque<usize> = VecDeque::new();
+        let mut visited: HashSet<usize> = HashSet::new();
+
+        visited.insert(start_idx);
+        q.push_back(start_idx);
 
         while let Some(idx) = q.pop_front() {
-            let label = self.resolve_label(idx);
-            final_order.push(label);
+            final_order.push(idx);
 
             let neighbors = self.structure.get_neighbors_ids(idx);
             for neighbor_idx in neighbors {
-                let neighbor_label = self.resolve_label(neighbor_idx);
-                if visited.insert(neighbor_label) {
+                if visited.insert(neighbor_idx) {
                     q.push_back(neighbor_idx);
                 }
             }
@@ -601,17 +696,26 @@ impl<S: IGraphStructure> _Graph<S> {
         return final_order;
     }
 
-    pub fn dijkstra(&mut self, start_node_label: &str) -> HashMap<String, f64>{
+    pub fn bfs(&mut self, start_node_label: &str) -> Vec<String> {
+        let starting_idx = self.label_to_id(start_node_label).expect("Error: Initial node not found");
+        return self.bfs_by_id(starting_idx).into_iter().map(|idx| self.resolve_label(idx)).collect();
+    }
+
+    /// Chaveia por usize em vez de String: antes, cada uma das O(V) iteracoes
+    /// externas fazia O(V) resolve_label + hashing de String so pra achar o
+    /// nao-visitado mais proximo; alem do custo, nos anonimos (label vazia)
+    /// colidiam todos na mesma chave "" e corrompiam o resultado. A label só
+    /// é resolvida uma vez, no final, pra montar o HashMap<String, f64> de
+    /// retorno.
+    pub fn dijkstra_by_id(&mut self, start_idx: usize) -> HashMap<usize, f64> {
         let size = self.get_node_count();
-        let _start_idx = self.label_to_id(start_node_label).expect("Node not found");
-        let mut distances: HashMap<String, f64> = HashMap::new();
+        let mut distances: HashMap<usize, f64> = HashMap::with_capacity(size);
 
         for i in 0..size {
-            let lbl = self.resolve_label(i);
-            distances.insert(lbl, f64::INFINITY);
+            distances.insert(i, f64::INFINITY);
         }
 
-        distances.insert(start_node_label.to_string(), 0.);
+        distances.insert(start_idx, 0.);
 
         let mut visited = vec![false; size];
         let adj_matrix = self.generate_adjacency_matrix();
@@ -621,9 +725,8 @@ impl<S: IGraphStructure> _Graph<S> {
             let mut u: Option<usize> = None;
 
             for i in 0..size {
-                let lbl = self.resolve_label(i);
-                if !visited[i] && distances[&lbl] < min_distance {
-                    min_distance = distances[&lbl];
+                if !visited[i] && distances[&i] < min_distance {
+                    min_distance = distances[&i];
                     u = Some(i);
                 }
             }
@@ -636,15 +739,24 @@ impl<S: IGraphStructure> _Graph<S> {
 
             for v in 0..size {
                 if adj_matrix[u][v] != 0. && !visited[v] {
-                    let u_lbl = self.resolve_label(u);
-                    let v_lbl = self.resolve_label(v);
-
-                    let alt = distances[&u_lbl] as f32 + adj_matrix[u][v];
-                    if alt < distances[&v_lbl] as f32 {
-                        distances.insert(v_lbl.clone(), alt as f64);
+                    let alt = distances[&u] as f32 + adj_matrix[u][v];
+                    if alt < distances[&v] as f32 {
+                        distances.insert(v, alt as f64);
                     }
                 }
             }
+        }
+
+        return distances;
+    }
+
+    pub fn dijkstra(&mut self, start_node_label: &str) -> HashMap<String, f64>{
+        let start_idx = self.label_to_id(start_node_label).expect("Node not found");
+        let distances_by_id = self.dijkstra_by_id(start_idx);
+
+        let mut distances: HashMap<String, f64> = HashMap::with_capacity(distances_by_id.len());
+        for (idx, dist) in distances_by_id {
+            distances.insert(self.resolve_label(idx), dist);
         }
 
         return distances;

@@ -587,6 +587,7 @@ dependencies = [
  "pyo3-stub-gen",
  "rand",
  "reqwest",
+ "rustc-hash",
  "serde",
  "serde_json",
 ]

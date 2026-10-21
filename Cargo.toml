@@ -13,6 +13,7 @@ pyo3 = { version = "0.26.0", features = ["extension-module"] }
 pyo3-stub-gen = "0.13.1"
 rand = "0.8"
 reqwest = { version = "0.11", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+rustc-hash = "2.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
@@ -21,3 +22,14 @@ default = []
 test_matrix = []
 test_csr = []
 test_pcsr = []
+
+# O benchmark de bulk-loading só é representativo em release: em debug, os
+# bounds-checks e a ausência de inlining/vetorização nos loops da CSR sozinhos
+# já explicam uma diferença de 10-50x. LTO + 1 codegen-unit dão ao LLVM a
+# visão inteira do crate para inlinar e vetorizar os loops apertados de
+# contagem/prefix-sum/preenchimento.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"   # pyo3 depende de unwind para propagar exceções Python; não usar "abort"

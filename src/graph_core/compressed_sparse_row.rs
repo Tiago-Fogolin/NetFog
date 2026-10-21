@@ -111,6 +111,7 @@ impl IGraphStructure for CompressedSparseRow {
     }
 
     fn batch_add_nodes(&mut self, additional_count: usize) {
+        self.offsets.reserve(additional_count);
         let last = *self.offsets.last().unwrap();
         for _ in 0..additional_count {
             self.offsets.push(last);
@@ -119,37 +120,78 @@ impl IGraphStructure for CompressedSparseRow {
     }
 
     fn batch_create_connections(&mut self, connections: &[(usize, usize, f32, bool)]) {
-        let mut all_edges: Vec<Vec<(usize, f32, bool)>> = vec![Vec::new(); self.node_count];
+        let n = self.node_count;
 
-        for i in 0..self.node_count {
-            let start = self.offsets[i];
-            let end = self.offsets[i + 1];
-            for j in start..end {
-                all_edges[i].push((self.edges[j], self.weights[j], self.directed_flags[j]));
-            }
+        for &(from, to, _, _) in connections {
+            assert!(from < n && to < n, "batch_create_connections: index out of bounds");
         }
 
-        for &(from, to, weight, directed) in connections {
-            all_edges[from].push((to, weight, directed));
+        let mut new_offsets: Vec<usize> = vec![0; n + 1];
+
+        for i in 0..n {
+            new_offsets[i + 1] = self.offsets[i + 1] - self.offsets[i];
+        }
+
+        for &(from, to, _weight, directed) in connections {
+            new_offsets[from + 1] += 1;
             if !directed && from != to {
-                all_edges[to].push((from, weight, false));
+                new_offsets[to + 1] += 1;
             }
         }
 
-        self.offsets = vec![0];
-        self.edges.clear();
-        self.weights.clear();
-        self.directed_flags.clear();
-        for node_edges in &all_edges {
-            for &(tgt, w, d) in node_edges {
-                self.edges.push(tgt);
-                self.weights.push(w);
-                self.directed_flags.push(d);
-            }
-            self.offsets.push(self.edges.len());
+        for i in 0..n {
+            new_offsets[i + 1] += new_offsets[i];
         }
+
+        let total_edges = new_offsets[n];
+
+        let mut new_edges: Vec<usize> = Vec::with_capacity(total_edges);
+        let mut new_weights: Vec<f32> = Vec::with_capacity(total_edges);
+        let mut new_directed_flags: Vec<bool> = Vec::with_capacity(total_edges);
+        unsafe {
+            new_edges.set_len(total_edges);
+            new_weights.set_len(total_edges);
+            new_directed_flags.set_len(total_edges);
+        }
+
+        let mut cursors: Vec<usize> = new_offsets[..n].to_vec();
+
+        unsafe {
+            for i in 0..n {
+                let start = self.offsets[i];
+                let end = self.offsets[i + 1];
+                for j in start..end {
+                    let pos = *cursors.get_unchecked(i);
+                    *new_edges.get_unchecked_mut(pos) = self.edges[j];
+                    *new_weights.get_unchecked_mut(pos) = self.weights[j];
+                    *new_directed_flags.get_unchecked_mut(pos) = self.directed_flags[j];
+                    *cursors.get_unchecked_mut(i) += 1;
+                }
+            }
+
+            for &(from, to, weight, directed) in connections {
+                let pos = *cursors.get_unchecked(from);
+                *new_edges.get_unchecked_mut(pos) = to;
+                *new_weights.get_unchecked_mut(pos) = weight;
+                *new_directed_flags.get_unchecked_mut(pos) = directed;
+                *cursors.get_unchecked_mut(from) += 1;
+
+                if !directed && from != to {
+                    let pos_rev = *cursors.get_unchecked(to);
+                    *new_edges.get_unchecked_mut(pos_rev) = from;
+                    *new_weights.get_unchecked_mut(pos_rev) = weight;
+                    *new_directed_flags.get_unchecked_mut(pos_rev) = false;
+                    *cursors.get_unchecked_mut(to) += 1;
+                }
+            }
+        }
+
+        self.offsets = new_offsets;
+        self.edges = new_edges;
+        self.weights = new_weights;
+        self.directed_flags = new_directed_flags;
     }
-    
+
     fn get_all_edges(&self) -> impl Iterator<Item = (usize, usize, f32, bool)> + '_ {
         return (0..self.node_count).flat_map(move |i| {
             let start = self.offsets[i];
