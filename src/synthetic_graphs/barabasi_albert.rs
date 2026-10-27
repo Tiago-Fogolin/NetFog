@@ -11,32 +11,28 @@ pub fn generate_barabasi_albert<S: IGraphStructure + Default>(n: usize, m: usize
     assert!(m >= 1 && m < n, "m must satisfy 1 <= m < n");
 
     let mut graph = _Graph::<S>::default();
+    graph.batch_add_anonymous_nodes(n);
 
-    // Seed: fully-connected clique of m nodes
-    for i in 0..m {
-        graph.add_node(i.to_string());
-    }
+    let mut edges: Vec<(usize, usize, f32, bool)> = Vec::new();
+
     for i in 0..m {
         for j in (i + 1)..m {
-            graph.create_connection(i.to_string(), j.to_string(), 1.0, Some(false));
+            edges.push((i, j, 1.0, false));
         }
     }
 
-    // degrees[i] = degree of node i; initialise to m-1 for seed nodes
     let mut degrees = vec![m - 1; m];
     let mut _total_degree: usize = m * (m - 1);
 
     let mut rng = rand::thread_rng();
 
     for new_node in m..n {
-        graph.add_node(new_node.to_string());
         degrees.push(0);
 
         let mut chosen: HashSet<usize> = HashSet::new();
         let attach_to = m.min(new_node);
 
         while chosen.len() < attach_to {
-            // Sum of effective degrees (use 1 as floor so zero-degree nodes are reachable)
             let eligible_sum: usize = (0..new_node)
                 .filter(|e| !chosen.contains(e))
                 .map(|e| degrees[e].max(1))
@@ -60,7 +56,6 @@ pub fn generate_barabasi_albert<S: IGraphStructure + Default>(n: usize, m: usize
                 }
             }
 
-            // Floating-point fallback: pick the last eligible node
             if picked.is_none() {
                 for existing in (0..new_node).rev() {
                     if !chosen.contains(&existing) {
@@ -76,12 +71,14 @@ pub fn generate_barabasi_albert<S: IGraphStructure + Default>(n: usize, m: usize
         }
 
         for &target in &chosen {
-            graph.create_connection(new_node.to_string(), target.to_string(), 1.0, Some(false));
+            edges.push((new_node, target, 1.0, false));
             degrees[new_node] += 1;
             degrees[target] += 1;
             _total_degree += 2;
         }
     }
+
+    graph.batch_create_connections_from_ids(&edges);
 
     return graph;
 }

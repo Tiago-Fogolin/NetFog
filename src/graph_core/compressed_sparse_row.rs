@@ -6,6 +6,7 @@ pub struct CompressedSparseRow {
     pub edges: Vec<usize>,
     pub weights: Vec<f32>,
     pub directed_flags: Vec<bool>,
+    incoming_directed: Vec<Vec<usize>>,
 }
 
 impl Default for CompressedSparseRow {
@@ -16,14 +17,36 @@ impl Default for CompressedSparseRow {
             edges: Vec::new(),
             weights: Vec::new(),
             directed_flags: Vec::new(),
+            incoming_directed: Vec::new(),
         }
     }
+}
+
+fn counting_sort_indices_by<T: Copy>(items: &[T], bucket_count: usize, key: impl Fn(&T) -> usize) -> Vec<usize> {
+    let mut bucket_starts = vec![0usize; bucket_count + 1];
+    for item in items {
+        bucket_starts[key(item) + 1] += 1;
+    }
+    for i in 0..bucket_count {
+        bucket_starts[i + 1] += bucket_starts[i];
+    }
+
+    let mut cursor = bucket_starts.clone();
+    let mut order = vec![0usize; items.len()];
+    for (idx, item) in items.iter().enumerate() {
+        let k = key(item);
+        order[cursor[k]] = idx;
+        cursor[k] += 1;
+    }
+
+    return order;
 }
 
 impl IGraphStructure for CompressedSparseRow {
     fn add_node(&mut self) -> usize {
         self.node_count += 1;
         self.offsets.push(*self.offsets.last().unwrap());
+        self.incoming_directed.push(Vec::new());
 
         return self.node_count - 1;
     }
@@ -40,7 +63,9 @@ impl IGraphStructure for CompressedSparseRow {
             self.offsets[k] += 1;
         }
 
-        if !is_directed && from_index != to_index {
+        if is_directed {
+            self.incoming_directed[to_index].push(from_index);
+        } else if from_index != to_index {
             let insert_pos_rev = self.offsets[to_index + 1];
             self.edges.insert(insert_pos_rev, from_index);
             self.weights.insert(insert_pos_rev, weight);
@@ -74,6 +99,9 @@ impl IGraphStructure for CompressedSparseRow {
                 self.offsets[k] -= 1;
             }
         }
+
+        self.incoming_directed[to_index].retain(|&src| src != from_index);
+        self.incoming_directed[from_index].retain(|&src| src != to_index);
     }
 
     fn has_connection(&self, source_index: usize, target_index: usize) -> bool {
@@ -96,12 +124,8 @@ impl IGraphStructure for CompressedSparseRow {
             nbors.insert(tgt);
         }
 
-        for i in 0..self.node_count {
-            let s = self.offsets[i];
-            let e = self.offsets[i + 1];
-            if self.edges[s..e].contains(&node_index) {
-                nbors.insert(i);
-            }
+        for &src in &self.incoming_directed[node_index] {
+            nbors.insert(src);
         }
 
         let mut ids: Vec<usize> = nbors.into_iter().collect();
@@ -115,6 +139,10 @@ impl IGraphStructure for CompressedSparseRow {
         let last = *self.offsets.last().unwrap();
         for _ in 0..additional_count {
             self.offsets.push(last);
+        }
+        self.incoming_directed.reserve(additional_count);
+        for _ in 0..additional_count {
+            self.incoming_directed.push(Vec::new());
         }
         self.node_count += additional_count;
     }
@@ -168,21 +196,42 @@ impl IGraphStructure for CompressedSparseRow {
                     *cursors.get_unchecked_mut(i) += 1;
                 }
             }
+        }
 
-            for &(from, to, weight, directed) in connections {
+        let forward_order = counting_sort_indices_by(connections, n, |&(from, _, _, _)| from);
+        unsafe {
+            for &idx in &forward_order {
+                let (from, to, weight, directed) = connections[idx];
                 let pos = *cursors.get_unchecked(from);
                 *new_edges.get_unchecked_mut(pos) = to;
                 *new_weights.get_unchecked_mut(pos) = weight;
                 *new_directed_flags.get_unchecked_mut(pos) = directed;
                 *cursors.get_unchecked_mut(from) += 1;
+            }
+        }
 
-                if !directed && from != to {
+        let mirrors: Vec<(usize, usize, f32, bool)> = connections.iter()
+            .copied()
+            .filter(|&(from, to, _, directed)| !directed && from != to)
+            .collect();
+
+        if !mirrors.is_empty() {
+            let reverse_order = counting_sort_indices_by(&mirrors, n, |&(_, to, _, _)| to);
+            unsafe {
+                for &idx in &reverse_order {
+                    let (from, to, weight, _) = mirrors[idx];
                     let pos_rev = *cursors.get_unchecked(to);
                     *new_edges.get_unchecked_mut(pos_rev) = from;
                     *new_weights.get_unchecked_mut(pos_rev) = weight;
                     *new_directed_flags.get_unchecked_mut(pos_rev) = false;
                     *cursors.get_unchecked_mut(to) += 1;
                 }
+            }
+        }
+
+        for &(from, to, _weight, directed) in connections {
+            if directed {
+                self.incoming_directed[to].push(from);
             }
         }
 

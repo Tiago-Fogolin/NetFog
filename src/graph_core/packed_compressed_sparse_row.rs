@@ -50,6 +50,7 @@ pub struct PackedCompressedSparseRow {
     n: u32,
     h: u32,
     log_n: u32,
+    incoming_directed: Vec<Vec<usize>>,
 }
 
 impl Default for PackedCompressedSparseRow {
@@ -64,6 +65,7 @@ impl Default for PackedCompressedSparseRow {
             n,
             h,
             log_n,
+            incoming_directed: Vec::new(),
         }
     }
 }
@@ -305,6 +307,7 @@ impl IGraphStructure for PackedCompressedSparseRow {
         node.end = self.n;
 
         self.nodes.push(node);
+        self.incoming_directed.push(Vec::new());
 
         let sentinel = if node_idx == 0 {
             Edge::sentinel(u32::MAX)
@@ -323,7 +326,9 @@ impl IGraphStructure for PackedCompressedSparseRow {
         let loc = self.find_edge_pos(from as u32, to as u32);
         let edge = Edge { dest: to as u32, weight, directed: is_directed };
         self.insert(loc, edge, from as u32);
-        if !is_directed && from != to {
+        if is_directed {
+            self.incoming_directed[to].push(from);
+        } else if from != to {
             let loc_rev = self.find_edge_pos(to as u32, from as u32);
             let edge_rev = Edge { dest: from as u32, weight, directed: false };
             self.insert(loc_rev, edge_rev, to as u32);
@@ -336,7 +341,11 @@ impl IGraphStructure for PackedCompressedSparseRow {
             let directed = self.edges[loc as usize].directed;
             self.edges[loc as usize] = Edge::null();
             self.redistribute(self.find_node(loc, self.log_n), self.log_n);
-            if !directed && from != to {
+            if directed {
+                if let Some(pos) = self.incoming_directed[to].iter().position(|&src| src == from) {
+                    self.incoming_directed[to].swap_remove(pos);
+                }
+            } else if from != to {
                 let loc_rev = self.find_edge_pos(to as u32, from as u32);
                 if loc_rev < self.n && self.edges[loc_rev as usize].dest == from as u32 {
                     self.edges[loc_rev as usize] = Edge::null();
@@ -362,9 +371,12 @@ impl IGraphStructure for PackedCompressedSparseRow {
             let e = self.edges[i as usize];
             if !e.is_null() && !e.is_sentinel() { nbors.insert(e.dest as usize); }
         }
+        for &src in &self.incoming_directed[node_index] {
+            nbors.insert(src);
+        }
         let mut ids: Vec<usize> = nbors.into_iter().collect();
         ids.sort();
-        ids
+        return ids;
     }
 
     fn batch_add_nodes(&mut self, count: usize) { for _ in 0..count { self.add_node(); } }
