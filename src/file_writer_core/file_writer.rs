@@ -67,7 +67,7 @@ pub fn write_json_file(path: &str, nodes: Vec<_Node>, all_edges: &[(usize, usize
 
     for node in &nodes {
         let json_node = JsonNode {
-            label: node.label.clone(),
+            label: node.label.to_string(),
             x: node.x,
             y: node.y
         };
@@ -76,8 +76,8 @@ pub fn write_json_file(path: &str, nodes: Vec<_Node>, all_edges: &[(usize, usize
 
     for &(from_index, to_index, weight, directed) in all_edges {
         let json_conn = JsonConnection {
-            source: nodes[from_index].label.clone(),
-            target: nodes[to_index].label.clone(),
+            source: nodes[from_index].label.to_string(),
+            target: nodes[to_index].label.to_string(),
             weight: weight,
         };
 

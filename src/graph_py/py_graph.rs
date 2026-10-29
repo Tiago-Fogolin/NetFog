@@ -171,7 +171,7 @@ impl Graph {
                     .map(|(px, py)| (Some(px), Some(py)))
                     .unwrap_or((None, None));
                 crate::graph_core::node::_Node {
-                    label: label.clone(),
+                    label: Rc::from(label.as_str()),
                     index: Some(idx),
                     x,
                     y,
@@ -255,14 +255,14 @@ impl Graph {
                             .map(|(px, py)| (Some(px), Some(py)))
                             .unwrap_or((None, None));
                         crate::graph_core::node::_Node {
-                            label: label.clone(),
+                            label: Rc::from(label.as_str()),
                             index: Some(idx),
                             x,
                             y,
                         }
                     })
                 } else {
-                    g.metadata.label_id_map.get(&label).map(|&idx| g.metadata.node_info[idx].clone())
+                    g.metadata.label_id_map.get(label.as_str()).map(|&idx| g.metadata.node_info[idx].clone())
                 }
             }),
         };

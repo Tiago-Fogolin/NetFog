@@ -11,7 +11,7 @@ fn create_node_hashmap(nodes: &[_Node]) -> HashMap<String, &_Node> {
     let mut node_map: HashMap<String, &_Node> = HashMap::new();
 
     for node in nodes {
-        node_map.insert(node.label.clone(), node);
+        node_map.insert(node.label.to_string(), node);
     }
 
     return node_map;
@@ -201,7 +201,7 @@ impl Svg {
             ("class".to_string(), AtributeValue::Text(format!("label{}",node.index.unwrap()))),
         ];
 
-        let mut simple_text = Element::new(node.label.clone());
+        let mut simple_text = Element::new(node.label.to_string());
         simple_text.simple_text = true;
 
 

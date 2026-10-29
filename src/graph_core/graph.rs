@@ -4,6 +4,7 @@ use crate::graph_core::node::_Node;
 use crate::visualization::generate_visualization;
 use crate::file_writer_core::file_writer::{write_edge_list_file, write_json_file, write_mtx_file, write_net_file};
 use std::f64;
+use std::rc::Rc;
 use std::time::Instant;
 use std::{collections::HashMap, collections::HashSet, collections::VecDeque};
 use crate::graph_core::graph_metadata::GraphMetadata;
@@ -56,7 +57,7 @@ impl<S: IGraphStructure> _Graph<S> {
         let exists = if self.structure.manages_labels() {
             self.structure.get_id_by_label(&label).is_some()
         } else {
-            self.metadata.label_id_map.contains_key(&label)
+            self.metadata.label_id_map.contains_key(label.as_str())
         };
 
         if exists {
@@ -69,13 +70,14 @@ impl<S: IGraphStructure> _Graph<S> {
         if self.structure.manages_labels() {
             self.structure.set_node_label(index, &label);
         } else {
+            let label: Rc<str> = label.into();
             let new_node = _Node {
                 label: label.clone(),
                 index: Some(index),
                 x: None,
                 y: None,
             };
-            self.metadata.label_id_map.insert(label.clone(), index);
+            self.metadata.label_id_map.insert(label, index);
             self.metadata.node_info.push(new_node);
         }
     }
@@ -85,7 +87,7 @@ impl<S: IGraphStructure> _Graph<S> {
         let exists = if self.structure.manages_labels() {
             self.structure.get_id_by_label(&label).is_some()
         } else {
-            self.metadata.label_id_map.contains_key(&label)
+            self.metadata.label_id_map.contains_key(label.as_str())
         };
 
         if exists {
@@ -100,13 +102,14 @@ impl<S: IGraphStructure> _Graph<S> {
             self.structure.set_node_label(index, &label);
             self.structure.set_node_position(index, x, y);
         } else {
+            let label: Rc<str> = label.into();
             let new_node = _Node {
                 label: label.clone(),
                 index: Some(index),
                 x: Some(x),
                 y: Some(y),
             };
-            self.metadata.label_id_map.insert(label.clone(), index);
+            self.metadata.label_id_map.insert(label, index);
             self.metadata.node_info.push(new_node);
         }
     }
@@ -143,7 +146,7 @@ impl<S: IGraphStructure> _Graph<S> {
             }
 
             let index = base_index + added_count;
-            let owned_label = label.to_owned();
+            let owned_label: Rc<str> = Rc::from(label);
 
             let new_node = _Node {
                 label: owned_label.clone(),
@@ -161,12 +164,17 @@ impl<S: IGraphStructure> _Graph<S> {
     }
 
     pub fn batch_add_anonymous_nodes(&mut self, count: usize) {
+        thread_local! {
+            static EMPTY_LABEL: Rc<str> = Rc::from("");
+        }
+
         self.metadata.node_info.reserve(count);
         let base_index = self.structure.node_count();
+        let empty_label = EMPTY_LABEL.with(|empty| empty.clone());
 
         for i in 0..count {
             self.metadata.node_info.push(_Node {
-                label: String::new(),
+                label: empty_label.clone(),
                 index: Some(base_index + i),
                 x: None,
                 y: None,
@@ -208,7 +216,7 @@ impl<S: IGraphStructure> _Graph<S> {
             let (x, y) = self.structure.get_node_position(id)
                 .map(|(px, py)| (Some(px), Some(py)))
                 .unwrap_or((None, None));
-            return Some(_Node { label, index: Some(id), x, y });
+            return Some(_Node { label: label.into(), index: Some(id), x, y });
         }
 
         return self.metadata.node_info.get(id).cloned();
@@ -222,7 +230,7 @@ impl<S: IGraphStructure> _Graph<S> {
         if id < self.metadata.node_info.len() {
             let label = &self.metadata.node_info[id].label;
             if !label.is_empty() {
-                return label.clone();
+                return label.to_string();
             }
         }
 
@@ -777,7 +785,7 @@ impl<S: IGraphStructure> _Graph<S> {
                 (None, None)
             };
             _Node {
-                label: self.resolve_label(i),
+                label: self.resolve_label(i).into(),
                 index: Some(i),
                 x,
                 y,
