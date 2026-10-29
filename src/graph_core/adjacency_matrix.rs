@@ -19,6 +19,26 @@ impl Default for AdjacencyMatrix {
     }
 }
 
+fn counting_sort_indices_by<T: Copy>(items: &[T], bucket_count: usize, key: impl Fn(&T) -> usize) -> Vec<usize> {
+    let mut bucket_starts = vec![0usize; bucket_count + 1];
+    for item in items {
+        bucket_starts[key(item) + 1] += 1;
+    }
+    for i in 0..bucket_count {
+        bucket_starts[i + 1] += bucket_starts[i];
+    }
+
+    let mut cursor = bucket_starts.clone();
+    let mut order = vec![0usize; items.len()];
+    for (idx, item) in items.iter().enumerate() {
+        let k = key(item);
+        order[cursor[k]] = idx;
+        cursor[k] += 1;
+    }
+
+    return order;
+}
+
 impl AdjacencyMatrix {
     fn grow_capacity(&mut self, min_capacity: usize) {
         if min_capacity <= self.capacity {
@@ -109,12 +129,24 @@ impl IGraphStructure for AdjacencyMatrix {
     }
 
     fn batch_create_connections(&mut self, connections: &[(usize, usize, f32, bool)]) {
+        let n = self.node_count;
         let cap = self.capacity;
-        for connection in connections {
-            let from = connection.0;
-            let to = connection.1;
-            let weight = connection.2;
-            let directed = connection.3;
+
+        let mut added_incoming_directed = vec![0usize; n];
+        for &(_from, to, _weight, directed) in connections {
+            if directed {
+                added_incoming_directed[to] += 1;
+            }
+        }
+        for i in 0..n {
+            if added_incoming_directed[i] > 0 {
+                self.incoming_directed[i].reserve(added_incoming_directed[i]);
+            }
+        }
+
+        let order = counting_sort_indices_by(connections, n, |&(from, _, _, _)| from);
+        for &idx in &order {
+            let (from, to, weight, directed) = connections[idx];
 
             self.mtz[from * cap + to] = (weight, directed);
             if directed {

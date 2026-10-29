@@ -189,3 +189,41 @@ fn test_incremental_add_node_crossing_capacity_growth() {
         assert_eq!(actual, expected);
     }
 }
+
+
+#[test]
+fn test_scattered_graph_crossing_many_capacity_boundaries() {
+    use std::collections::HashSet;
+
+    let mut graph = _Graph::default();
+    let n: usize = 500;
+
+    for i in 0..n {
+        graph.add_node(i.to_string());
+    }
+
+    let mut expected: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+
+    for i in 0..n {
+        let target_a = (i * 37 + 11) % n;
+        let target_b = (i * 53 + 7) % n;
+
+        graph.create_connection(i.to_string(), target_a.to_string(), 1.0, Some(false));
+        expected[i].insert(target_a);
+        expected[target_a].insert(i);
+
+        graph.create_connection(i.to_string(), target_b.to_string(), 1.0, Some(false));
+        expected[i].insert(target_b);
+        expected[target_b].insert(i);
+    }
+
+    for i in 0..n {
+        let mut actual: Vec<usize> = graph.structure.get_neighbors_ids(i);
+        actual.sort();
+
+        let mut exp: Vec<usize> = expected[i].iter().copied().collect();
+        exp.sort();
+
+        assert_eq!(actual, exp, "node {} neighbor mismatch", i);
+    }
+}

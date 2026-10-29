@@ -118,7 +118,8 @@ impl PackedCompressedSparseRow {
 
         if space.is_empty() { return; }
 
-        let step = len as f64 / space.len() as f64;
+        let effective_len = (index + len).min(self.n) - index;
+        let step = effective_len as f64 / space.len() as f64;
         for (i, &edge) in space.iter().enumerate() {
             let in_pos = index + (i as f64 * step).floor() as u32;
             if in_pos < self.n {
@@ -315,7 +316,8 @@ impl IGraphStructure for PackedCompressedSparseRow {
             Edge::sentinel(node_idx)
         };
 
-        self.insert(loc, sentinel, node_idx);
+        let search_src = if node_idx > 0 { node_idx - 1 } else { 0 };
+        self.insert(loc, sentinel, search_src);
 
         node_idx as usize
     }
@@ -380,8 +382,28 @@ impl IGraphStructure for PackedCompressedSparseRow {
     }
 
     fn batch_add_nodes(&mut self, count: usize) { for _ in 0..count { self.add_node(); } }
+
     fn batch_create_connections(&mut self, connections: &[(usize, usize, f32, bool)]) {
-        for &(f, t, w, d) in connections { self.create_connection(f, t, w, Some(d)); }
+        let n = self.nodes.len();
+        let mut bucket_starts = vec![0usize; n + 1];
+        for &(from, _, _, _) in connections {
+            bucket_starts[from + 1] += 1;
+        }
+        for i in 0..n {
+            bucket_starts[i + 1] += bucket_starts[i];
+        }
+
+        let mut cursor = bucket_starts.clone();
+        let mut order = vec![0usize; connections.len()];
+        for (idx, &(from, _, _, _)) in connections.iter().enumerate() {
+            order[cursor[from]] = idx;
+            cursor[from] += 1;
+        }
+
+        for &idx in &order {
+            let (f, t, w, d) = connections[idx];
+            self.create_connection(f, t, w, Some(d));
+        }
     }
 
     fn get_all_edges(&self) -> impl Iterator<Item = (usize, usize, f32, bool)> + '_ {

@@ -109,6 +109,30 @@ impl IGraphStructure for AdjacencyList {
     }
 
     fn batch_create_connections(&mut self, connections: &[(usize, usize, f32, bool)]) {
+        let n = self.node_count;
+        let mut added_out_degree = vec![0usize; n];
+        let mut added_incoming_directed = vec![0usize; n];
+
+        for &(from, to, _weight, directed) in connections {
+            added_out_degree[from] += 1;
+            if directed {
+                added_incoming_directed[to] += 1;
+            } else if from != to {
+                added_out_degree[to] += 1;
+            }
+        }
+
+        for i in 0..n {
+            if added_out_degree[i] > 0 {
+                self.targets[i].reserve(added_out_degree[i]);
+                self.weights[i].reserve(added_out_degree[i]);
+                self.directed_flags[i].reserve(added_out_degree[i]);
+            }
+            if added_incoming_directed[i] > 0 {
+                self.incoming_directed[i].reserve(added_incoming_directed[i]);
+            }
+        }
+
         for conn in connections {
             self.create_connection(conn.0, conn.1, conn.2, Some(conn.3));
         }
