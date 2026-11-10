@@ -7,6 +7,7 @@ use crate::graph_core::adjacency_matrix::AdjacencyMatrix;
 use crate::graph_core::adjacency_list::AdjacencyList;
 use crate::graph_core::compressed_sparse_row::CompressedSparseRow;
 use crate::graph_core::packed_compressed_sparse_row::PackedCompressedSparseRow;
+use crate::graph_core::bfs_csr::BfsCsr;
 use crate::graph_py::py_node::Node;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
@@ -15,15 +16,6 @@ use crate::synthetic_graphs::core::{SyntheticGraphType, PySyntheticGraphType};
 use pyo3::types::{PyDict, PyList};
 use pyo3_stub_gen::derive::gen_stub_pyclass;
 
-/// Permite que os métodos de nó único (create_connection, node_by_label,
-/// compute_degrees, dfs, bfs, dijkstra, ...) aceitem tanto um id (`int`)
-/// quanto uma label (`str`) no lado Python, sem precisar de um método
-/// `_by_id` separado. O PyO3 tenta extrair cada variante na ordem
-/// declarada: `int` bate em `Id`, `str` cai em `Label`. Resolver isso custa
-/// uma tentativa de downcast por chamada -- irrelevante para estas funções
-/// de nó único, mas por isso os batches (`add_edges_from`/`_from_ids`,
-/// `add_nodes_from`) continuam com nomes separados: ali o custo se repetiria
-/// por elemento, em potencialmente milhões de linhas.
 #[derive(FromPyObject)]
 pub enum NodeRef {
     Id(usize),
@@ -38,6 +30,7 @@ pub enum GraphStructureType {
     AdjacencyList,
     CompressedSparseRow,
     PackedCompressedSparseRow,
+    BfsCsr,
 }
 
 enum GraphInner {
@@ -45,6 +38,7 @@ enum GraphInner {
     List(Rc<RefCell<_Graph<AdjacencyList>>>),
     CompressedSparseRow(Rc<RefCell<_Graph<CompressedSparseRow>>>),
     PackedCompressedSparseRow(Rc<RefCell<_Graph<PackedCompressedSparseRow>>>),
+    BfsCsr(Rc<RefCell<_Graph<BfsCsr>>>),
 }
 
 macro_rules! with_graph_mut {
@@ -63,6 +57,10 @@ macro_rules! with_graph_mut {
                 $body
             },
             GraphInner::PackedCompressedSparseRow(inner) => {
+                let mut $g = (*inner).borrow_mut();
+                $body
+            },
+            GraphInner::BfsCsr(inner) => {
                 let mut $g = (*inner).borrow_mut();
                 $body
             },
@@ -86,6 +84,10 @@ macro_rules! with_graph {
                 $body
             },
             GraphInner::PackedCompressedSparseRow(inner) => {
+                let $g = (*inner).borrow();
+                $body
+            },
+            GraphInner::BfsCsr(inner) => {
                 let $g = (*inner).borrow();
                 $body
             },
@@ -117,6 +119,11 @@ macro_rules! make_graph {
                 type $T = PackedCompressedSparseRow;
                 let graph = $build;
                 Graph { inner: GraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(graph))) }
+            },
+            GraphStructureType::BfsCsr => {
+                type $T = BfsCsr;
+                let graph = $build;
+                Graph { inner: GraphInner::BfsCsr(Rc::new(RefCell::new(graph))) }
             },
         }
     }}
@@ -155,6 +162,7 @@ impl Graph {
             crate::graph_py::py_graph::GraphStructureType::AdjacencyList => GraphInner::List(Rc::new(RefCell::new(_Graph::<AdjacencyList>::default()))),
             crate::graph_py::py_graph::GraphStructureType::CompressedSparseRow => GraphInner::CompressedSparseRow(Rc::new(RefCell::new(_Graph::<CompressedSparseRow>::default()))),
             crate::graph_py::py_graph::GraphStructureType::PackedCompressedSparseRow => GraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(_Graph::<PackedCompressedSparseRow>::default()))),
+            crate::graph_py::py_graph::GraphStructureType::BfsCsr => GraphInner::BfsCsr(Rc::new(RefCell::new(_Graph::<BfsCsr>::default()))),
         };
         return Graph { inner };
     }
@@ -445,25 +453,58 @@ impl Graph {
         }
     }
 
-    pub fn dijkstra(&self, start_node_label: NodeRef, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let dijkstra = PyDict::new(py);
-
+   pub fn dijkstra(&self, start_node_label: NodeRef, py: Python<'_>) -> PyResult<Py<PyAny>> {
         match start_node_label {
             NodeRef::Id(id) => {
-                let dijkstra_snapshot = with_graph_mut!(self, |g| g.dijkstra_by_id(id));
-                for (key, value) in dijkstra_snapshot.iter() {
-                    dijkstra.set_item(key, value)?;
-                }
+                let distances = with_graph_mut!(self, |g| g.dijkstra_by_id(id));
+                return Ok(PyList::new(py, distances)?.into_any().unbind());
             },
             NodeRef::Label(label) => {
-                let dijkstra_snapshot = with_graph_mut!(self, |g| g.dijkstra(&label));
-                for (key, value) in dijkstra_snapshot.iter() {
+                let distances = with_graph_mut!(self, |g| g.dijkstra(&label));
+                let dijkstra = PyDict::new(py);
+                for (key, value) in distances.iter() {
                     dijkstra.set_item(key, value)?;
                 }
+                return Ok(dijkstra.into_any().unbind());
             },
         }
+    }
 
-        return Ok(dijkstra.into());
+    pub fn connected_components(&self) -> PyResult<Vec<usize>> {
+        let component_ids = with_graph_mut!(self, |g| g.connected_components());
+        return Ok(component_ids);
+    }
+
+    pub fn connected_components_grouped(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let grouped_snapshot = with_graph_mut!(self, |g| g.connected_components_grouped());
+        let grouped = PyDict::new(py);
+
+        for (key, value) in grouped_snapshot.iter() {
+            grouped.set_item(key, value)?;
+        }
+
+        return Ok(grouped.into());
+    }
+
+    #[pyo3(signature = (damping=0.85, max_iter=100, tolerance=1e-6))]
+    pub fn pagerank(&self, damping: f32, max_iter: usize, tolerance: f32) -> PyResult<Vec<f32>> {
+        let scores = with_graph_mut!(self, |g| g.pagerank(damping, max_iter, tolerance));
+        return Ok(scores);
+    }
+
+    pub fn triangle_count(&self) -> PyResult<usize> {
+        let total = with_graph_mut!(self, |g| g.triangle_count());
+        return Ok(total);
+    }
+
+    pub fn triangle_count_by_node(&self) -> PyResult<Vec<usize>> {
+        let counts = with_graph_mut!(self, |g| g.triangle_count_by_node());
+        return Ok(counts);
+    }
+
+    pub fn betweenness_centrality(&self) -> PyResult<Vec<f32>> {
+        let scores = with_graph_mut!(self, |g| g.betweenness_centrality());
+        return Ok(scores);
     }
 
     #[pyo3(signature = (layout=Layout::Random, override_positions=false, style=None))]

@@ -356,3 +356,38 @@ B C 2.0
     std::fs::remove_file("test_from_edge_list.txt").ok();
 }
 
+#[test]
+#[should_panic(expected = "Cannot create an id-only node")]
+fn test_mixing_label_then_id_node_creation_panics() {
+    let mut graph = TestGraph::default();
+    graph.add_node("A".to_string());
+    graph.batch_add_anonymous_nodes(1);
+}
+
+#[test]
+#[should_panic(expected = "Cannot create a labeled node")]
+fn test_mixing_id_then_label_node_creation_panics() {
+    let mut graph = TestGraph::default();
+    graph.batch_add_anonymous_nodes(1);
+    graph.add_node("A".to_string());
+}
+
+#[test]
+fn test_pure_label_node_creation_does_not_panic() {
+    let mut graph = TestGraph::default();
+    graph.add_node("A".to_string());
+    graph.add_node_with_pos("B".to_string(), 1., 1.);
+    graph.batch_add_nodes(vec!["C", "D"]);
+
+    assert_eq!(graph.get_node_count(), 4);
+}
+
+#[test]
+fn test_pure_id_node_creation_does_not_panic() {
+    let mut graph = TestGraph::default();
+    graph.batch_add_anonymous_nodes(2);
+    graph.batch_add_anonymous_nodes(3);
+
+    assert_eq!(graph.get_node_count(), 5);
+}
+

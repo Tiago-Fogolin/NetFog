@@ -1,5 +1,4 @@
 use crate::graph_core::graph_structure_interface::IGraphStructure;
-use std::collections::HashSet;
 
 pub struct AdjacencyMatrix {
     pub node_count: usize,
@@ -100,22 +99,22 @@ impl IGraphStructure for AdjacencyMatrix {
     }
 
     fn get_neighbors_ids(&self, node_index: usize) -> Vec<usize> {
-        let mut nbors = HashSet::new();
         let cap = self.capacity;
         let row_start = node_index * cap;
 
+        let mut ids: Vec<usize> = Vec::new();
         for i in 0..self.node_count {
             if self.mtz[row_start + i].0 > 0. {
-                nbors.insert(i);
+                ids.push(i);
             }
         }
 
         for &src in &self.incoming_directed[node_index] {
-            nbors.insert(src);
+            ids.push(src);
         }
 
-        let mut ids: Vec<usize> = nbors.into_iter().collect();
         ids.sort();
+        ids.dedup();
         return ids;
     }
 

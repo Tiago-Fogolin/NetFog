@@ -87,8 +87,8 @@ impl PackedCompressedSparseRow {
     }
 
     fn density_bound(&self, depth: u32) -> (f64, f64) {
-        let lower = 0.08 - (0.04 * depth as f64) / (self.h.max(1) as f64);
-        let upper = 0.75 + (0.25 * depth as f64) / (self.h.max(1) as f64);
+        let lower = 0.04 + (0.04 * depth as f64) / (self.h.max(1) as f64);
+        let upper = 1.0 - (0.25 * depth as f64) / (self.h.max(1) as f64);
         (lower, upper)
     }
 
@@ -132,7 +132,6 @@ impl PackedCompressedSparseRow {
     }
 
     fn double_list(&mut self) {
-        let old_n = self.n;
         self.n *= 2;
         self.edges.resize(self.n as usize, Edge::null());
         self.log_n = (self.n as f64).log2().log2().exp2().max(2.0) as u32;
@@ -197,7 +196,33 @@ impl PackedCompressedSparseRow {
         l
     }
 
+    fn make_room(&mut self, loc: u32) -> bool {
+        let mut curr_len = self.log_n;
+        let mut curr_level = self.h;
+        let mut node_idx = self.find_node(loc, curr_len);
+        let mut d = self.get_density(node_idx, curr_len);
+        let mut bounds = self.density_bound(curr_level);
+
+        while d >= bounds.1 {
+            curr_len *= 2;
+            if curr_len <= self.n {
+                curr_level = curr_level.saturating_sub(1);
+                node_idx = self.find_node(loc, curr_len);
+                d = self.get_density(node_idx, curr_len);
+                bounds = self.density_bound(curr_level);
+            } else {
+                return false;
+            }
+        }
+        self.redistribute(node_idx, curr_len);
+        return true;
+    }
+
     fn insert(&mut self, index: u32, elem: Edge, src: u32) -> u32 {
+        self.insert_at(index, elem, src, false)
+    }
+
+    fn insert_at(&mut self, index: u32, elem: Edge, src: u32, rebalanced: bool) -> u32 {
         let mut loc = index;
 
         if loc >= self.n {
@@ -213,9 +238,11 @@ impl PackedCompressedSparseRow {
             }
 
             if !self.slide_right(loc) {
-                self.double_list();
+                if rebalanced || !self.make_room(loc) {
+                    self.double_list();
+                }
                 loc = self.find_edge_pos(src, elem.dest);
-                return self.insert(loc, elem, src);
+                return self.insert_at(loc, elem, src, true);
             }
         }
 
@@ -224,26 +251,10 @@ impl PackedCompressedSparseRow {
             self.fix_sentinel(elem.get_sentinel_node_idx(), loc);
         }
 
-        let mut curr_len = self.log_n;
-        let mut curr_level = self.h;
-        let mut node_idx = self.find_node(loc, curr_len);
-        let mut d = self.get_density(node_idx, curr_len);
-        let mut bounds = self.density_bound(curr_level);
-
-        while d >= bounds.1 {
-            curr_len *= 2;
-            if curr_len <= self.n {
-                curr_level = curr_level.saturating_sub(1);
-                node_idx = self.find_node(loc, curr_len);
-                d = self.get_density(node_idx, curr_len);
-                bounds = self.density_bound(curr_level);
-            } else {
-                self.double_list();
-                return self.find_edge_pos(src, elem.dest);
-            }
+        if !self.make_room(loc) {
+            self.double_list();
         }
-        self.redistribute(node_idx, curr_len);
-        self.find_edge_pos(src, elem.dest)
+        return self.find_edge_pos(src, elem.dest);
     }
 
     fn find_edge_pos(&self, src: u32, dest: u32) -> u32 {
@@ -366,18 +377,18 @@ impl IGraphStructure for PackedCompressedSparseRow {
     fn node_count(&self) -> usize { self.nodes.len() }
 
     fn get_neighbors_ids(&self, node_index: usize) -> Vec<usize> {
-        let mut nbors = HashSet::new();
         if node_index >= self.nodes.len() { return Vec::new(); }
         let node = self.nodes[node_index];
+        let mut ids: Vec<usize> = Vec::new();
         for i in node.beginning + 1..node.end.min(self.n) {
             let e = self.edges[i as usize];
-            if !e.is_null() && !e.is_sentinel() { nbors.insert(e.dest as usize); }
+            if !e.is_null() && !e.is_sentinel() { ids.push(e.dest as usize); }
         }
         for &src in &self.incoming_directed[node_index] {
-            nbors.insert(src);
+            ids.push(src);
         }
-        let mut ids: Vec<usize> = nbors.into_iter().collect();
         ids.sort();
+        ids.dedup();
         return ids;
     }
 

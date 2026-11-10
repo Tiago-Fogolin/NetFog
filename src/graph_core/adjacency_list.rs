@@ -1,5 +1,4 @@
 use crate::graph_core::graph_structure_interface::IGraphStructure;
-use std::collections::HashSet;
 
 pub struct AdjacencyList {
     pub node_count: usize,
@@ -79,22 +78,22 @@ impl IGraphStructure for AdjacencyList {
     }
 
     fn get_neighbors_ids(&self, node_index: usize) -> Vec<usize> {
-        let mut nbors = HashSet::new();
+        let mut ids: Vec<usize> = Vec::new();
 
         for idx in 0..self.targets[node_index].len() {
             if self.weights[node_index][idx] > 0. {
-                nbors.insert(self.targets[node_index][idx]);
+                ids.push(self.targets[node_index][idx]);
             }
         }
 
         for &(src, w) in &self.incoming_directed[node_index] {
             if w > 0. {
-                nbors.insert(src);
+                ids.push(src);
             }
         }
 
-        let mut ids: Vec<usize> = nbors.into_iter().collect();
         ids.sort();
+        ids.dedup();
         return ids;
     }
 

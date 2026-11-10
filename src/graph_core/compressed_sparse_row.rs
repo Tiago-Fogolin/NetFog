@@ -115,21 +115,20 @@ impl IGraphStructure for CompressedSparseRow {
     }
 
     fn get_neighbors_ids(&self, node_index: usize) -> Vec<usize> {
-        use std::collections::HashSet;
-        let mut nbors = HashSet::new();
         let start = self.offsets[node_index];
         let end = self.offsets[node_index + 1];
 
+        let mut ids: Vec<usize> = Vec::new();
         for &tgt in &self.edges[start..end] {
-            nbors.insert(tgt);
+            ids.push(tgt);
         }
 
         for &src in &self.incoming_directed[node_index] {
-            nbors.insert(src);
+            ids.push(src);
         }
 
-        let mut ids: Vec<usize> = nbors.into_iter().collect();
         ids.sort();
+        ids.dedup();
 
         return ids;
     }
