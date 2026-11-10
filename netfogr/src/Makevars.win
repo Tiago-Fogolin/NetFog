@@ -1,0 +1,20 @@
+TARGET = x86_64-pc-windows-gnu
+RUST_TARGET_DIR = rust/target/$(TARGET)/release
+STATIC_LIB = $(RUST_TARGET_DIR)/libnetfogr.a
+MINGW_BIN = C:/msys64/mingw64/bin
+
+PKG_LIBS = "$(CURDIR)/$(STATIC_LIB)" -L"$(CURDIR)/rust/r_import_lib_gnu" -lR -lws2_32 -ladvapi32 -luserenv -lbcrypt -lntdll -ldbghelp
+
+OBJECTS = rust/entrypoint.o
+
+.PHONY: $(STATIC_LIB)
+
+all: $(SHLIB)
+
+$(SHLIB): $(STATIC_LIB)
+
+$(STATIC_LIB):
+	cd rust && PATH="$(MINGW_BIN):$$PATH" cargo build --release --target $(TARGET)
+
+clean:
+	rm -Rf rust/target rust/r_import_lib_gnu rust/entrypoint.o

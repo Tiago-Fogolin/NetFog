@@ -3,6 +3,7 @@ pub mod file_writer_core;
 pub mod file_reader_core;
 pub mod svg_creation;
 pub mod layout;
+#[cfg(feature = "python")]
 pub mod graph_py;
 pub mod external_apis;
 pub mod synthetic_graphs;
@@ -24,18 +25,28 @@ pub type TestGraph = graph_core::graph::_Graph<graph_core::adjacency_list::Adjac
 
 pub use graph_core::graph::{ConnectionProperty};
 
+#[cfg(feature = "python")]
 pub use graph_py::py_graph::GraphStructureType;
+#[cfg(feature = "python")]
 pub use synthetic_graphs::core::PySyntheticGraphType;
+#[cfg(feature = "python")]
 pub use graph_py::py_graph::Graph;
+#[cfg(feature = "python")]
 pub use graph_py::py_node::Node;
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
+#[cfg(feature = "python")]
 use pyo3_stub_gen::*;
 
+#[cfg(feature = "python")]
 use crate::layout::layout::Layout;
+#[cfg(feature = "python")]
 use crate::layout::style::GraphStyle;
 
+#[cfg(feature = "python")]
 use crate::external_apis::core::OpenAlexGraphType;
 
+#[cfg(feature = "python")]
 #[pymodule]
 fn netfog(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Node>()?;
@@ -48,4 +59,5 @@ fn netfog(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "python")]
 define_stub_info_gatherer!(stub_info);

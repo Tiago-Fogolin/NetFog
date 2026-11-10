@@ -470,6 +470,14 @@ impl Graph {
         }
     }
 
+    pub fn closeness_centrality(&self, node_label: NodeRef) -> PyResult<f32> {
+        let result = match node_label {
+            NodeRef::Id(id) => with_graph_mut!(self, |g| g.closeness_centrality_by_id(id)),
+            NodeRef::Label(label) => with_graph_mut!(self, |g| g.closeness_centrality(&label)),
+        };
+        return Ok(result);
+    }
+
     pub fn connected_components(&self) -> PyResult<Vec<usize>> {
         let component_ids = with_graph_mut!(self, |g| g.connected_components());
         return Ok(component_ids);
@@ -505,6 +513,30 @@ impl Graph {
     pub fn betweenness_centrality(&self) -> PyResult<Vec<f32>> {
         let scores = with_graph_mut!(self, |g| g.betweenness_centrality());
         return Ok(scores);
+    }
+
+    pub fn clustering_coefficient(&self, node_label: NodeRef) -> PyResult<f32> {
+        let result = match node_label {
+            NodeRef::Id(id) => with_graph_mut!(self, |g| g.clustering_coefficient_by_id(id)),
+            NodeRef::Label(label) => with_graph_mut!(self, |g| g.clustering_coefficient(&label)),
+        };
+        return Ok(result);
+    }
+
+    pub fn transitivity(&self) -> PyResult<f32> {
+        let result = with_graph_mut!(self, |g| g.transitivity());
+        return Ok(result);
+    }
+
+    pub fn k_core_decomposition(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let core_snapshot = with_graph_mut!(self, |g| g.k_core_decomposition());
+        let core = PyDict::new(py);
+
+        for (key, value) in core_snapshot.iter() {
+            core.set_item(key, value)?;
+        }
+
+        return Ok(core.into());
     }
 
     #[pyo3(signature = (layout=Layout::Random, override_positions=false, style=None))]

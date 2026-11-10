@@ -1,6 +1,7 @@
 use std::f64::consts::PI;
 use rand::prelude::*;
 use crate::_Node;
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
 // Fixed for now
@@ -75,7 +76,7 @@ pub fn normalize_y(y: f64) -> f64 {
 
 type LayoutFn = fn(&mut [_Node], &[(usize, usize)]);
 
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 #[derive(Clone, PartialEq)]
 pub enum Layout {
     Random,

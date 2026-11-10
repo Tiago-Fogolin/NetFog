@@ -1,3 +1,4 @@
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
 #[derive(Clone)]
@@ -7,12 +8,14 @@ pub enum SyntheticGraphType {
     WattsStrogatz { n: usize, k: usize, beta: f64 },
 }
 
+#[cfg(feature = "python")]
 #[pyclass(name = "SyntheticGraphType", module = "netfog")]
 #[derive(Clone)]
 pub struct PySyntheticGraphType {
     pub inner: SyntheticGraphType,
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl PySyntheticGraphType {
     #[staticmethod]

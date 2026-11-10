@@ -796,6 +796,20 @@ impl<S: IGraphStructure> _Graph<S> {
         return distances;
     }
 
+    pub fn closeness_centrality_by_id(&mut self, target_idx: usize) -> f32 {
+        let distances = self.dijkstra_by_id(target_idx);
+        let total_distance: f64 = distances.iter().sum();
+        let result = (1. / total_distance) as f32;
+
+        return result;
+    }
+
+    pub fn closeness_centrality(&mut self, node_label: &str) -> f32 {
+        let target_idx = self.label_to_id(node_label).expect("Node not found");
+
+        return self.closeness_centrality_by_id(target_idx);
+    }
+
      pub fn connected_components(&mut self) -> Vec<usize> {
         fn _dsu_find(parent: &mut Vec<usize>, x: usize) -> usize {
             let mut root = x;
@@ -1050,7 +1064,52 @@ impl<S: IGraphStructure> _Graph<S> {
         return total / 3;
     }
 
-    
+    pub fn clustering_coefficient_by_id(&mut self, target_idx: usize) -> f32 {
+        let triangles = self.triangle_count_by_node();
+        let degree = self.structure.get_neighbors_ids(target_idx).len();
+        let denominator = degree * degree.saturating_sub(1);
+
+        if denominator == 0 {
+            return 0.;
+        }
+
+        let result = (2 * triangles[target_idx]) as f32 / denominator as f32;
+
+        return result;
+    }
+
+    pub fn clustering_coefficient(&mut self, node_label: &str) -> f32 {
+        let target_idx = self.label_to_id(node_label).expect("Node not found");
+
+        return self.clustering_coefficient_by_id(target_idx);
+    }
+
+    pub fn transitivity(&mut self) -> f32 {
+        let count = self.get_node_count();
+
+        if count == 0 {
+            return 0.;
+        }
+
+        let triangles = self.triangle_count_by_node();
+        let closed_triplets: usize = triangles.iter().sum();
+
+        let mut total_triplets: usize = 0;
+        for node in 0..count {
+            let degree = self.structure.get_neighbors_ids(node).len();
+            total_triplets += degree * degree.saturating_sub(1);
+        }
+
+        if total_triplets == 0 {
+            return 0.;
+        }
+
+        let result = (2 * closed_triplets) as f32 / total_triplets as f32;
+
+        return result;
+    }
+
+
     pub fn betweenness_centrality(&mut self) -> Vec<f32> {
         let count = self.get_node_count();
 
@@ -1126,6 +1185,82 @@ impl<S: IGraphStructure> _Graph<S> {
         };
 
         let result: Vec<f32> = betweenness.iter().map(|&b| (b * scale) as f32).collect();
+
+        return result;
+    }
+
+    pub fn k_core_decomposition(&mut self) -> HashMap<usize, usize> {
+        let count = self.get_node_count();
+        let mut result: HashMap<usize, usize> = HashMap::new();
+
+        if count == 0 {
+            return result;
+        }
+
+        let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); count];
+        for (from_idx, to_idx, weight, _directed) in self.structure.get_all_edges() {
+            if weight == 0. {
+                continue;
+            }
+
+            adjacency[from_idx].push(to_idx);
+            if from_idx != to_idx {
+                adjacency[to_idx].push(from_idx);
+            }
+        }
+
+        let mut core: Vec<usize> = adjacency.iter().map(|neighbors| neighbors.len()).collect();
+        let max_degree = *core.iter().max().unwrap_or(&0);
+
+        let mut nodes: Vec<usize> = (0..count).collect();
+        nodes.sort_by_key(|&v| core[v]);
+
+        let mut node_pos: Vec<usize> = vec![0; count];
+        for (pos, &v) in nodes.iter().enumerate() {
+            node_pos[v] = pos;
+        }
+
+        let mut bin_boundaries: Vec<usize> = vec![0; max_degree + 2];
+        let mut current_degree = 0;
+        for (i, &v) in nodes.iter().enumerate() {
+            if core[v] > current_degree {
+                for d in (current_degree + 1)..=core[v] {
+                    bin_boundaries[d] = i;
+                }
+                current_degree = core[v];
+            }
+        }
+
+        for i in 0..count {
+            let v = nodes[i];
+            let neighbors: Vec<usize> = adjacency[v].clone();
+
+            for u in neighbors {
+                if core[u] > core[v] {
+                    if let Some(pos) = adjacency[u].iter().position(|&x| x == v) {
+                        adjacency[u].swap_remove(pos);
+                    }
+
+                    let pos_u = node_pos[u];
+                    let bin_start = bin_boundaries[core[u]];
+                    let w = nodes[bin_start];
+
+                    if pos_u != bin_start {
+                        nodes[pos_u] = w;
+                        nodes[bin_start] = u;
+                        node_pos[u] = bin_start;
+                        node_pos[w] = pos_u;
+                    }
+
+                    bin_boundaries[core[u]] += 1;
+                    core[u] -= 1;
+                }
+            }
+        }
+
+        for i in 0..count {
+            result.insert(i, core[i]);
+        }
 
         return result;
     }

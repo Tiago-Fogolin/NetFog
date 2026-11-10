@@ -1,0 +1,12 @@
+Package: netfogr
+Type: Package
+Title: R Bindings for netfog
+Version: 0.1.0
+Authors@R: person("Tiago", "Fogolin", email = "ticofogolin@gmail.com", role = c("aut", "cre"))
+Description: R bindings for the netfog graph library, built on the same
+    graph_core used by the Python bindings, via extendr.
+License: MIT + file LICENSE
+Encoding: UTF-8
+RoxygenNote: 7.3.1
+SystemRequirements: Cargo (Rust's package manager), rustc >= 1.70, a GNU-ABI
+    Rust toolchain (x86_64-pc-windows-gnu) on Windows
