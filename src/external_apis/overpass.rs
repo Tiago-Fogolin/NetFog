@@ -1,4 +1,3 @@
-use crate::Graph;
 use crate::external_apis::core::{OverpassResponse, NominatimResponse};
 use reqwest::blocking::Client;
 use std::error::Error;

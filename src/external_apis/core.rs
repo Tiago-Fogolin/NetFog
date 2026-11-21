@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::{HashMap}};
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -51,7 +52,7 @@ pub struct Work {
 }
 
 
-#[pyclass(eq, eq_int)]
+#[cfg_attr(feature = "python", pyclass(eq, eq_int))]
 #[derive(Clone, PartialEq)]
 pub enum OpenAlexGraphType {
     Coauthorship,

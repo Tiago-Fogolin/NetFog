@@ -1,0 +1,5 @@
+^src/rust/target$
+^src/rust/r_import_lib_gnu$
+^src/rust/probe_test.*\.R$
+^test_package\.R$
+^src/\.cargo$

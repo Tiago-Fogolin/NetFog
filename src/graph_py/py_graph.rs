@@ -11,10 +11,15 @@ use crate::graph_py::py_node::Node;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
 use crate::external_apis::core::OpenAlexGraphType;
-
 use crate::synthetic_graphs::core::{SyntheticGraphType, PySyntheticGraphType};
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 use pyo3_stub_gen::derive::gen_stub_pyclass;
+
+#[derive(FromPyObject)]
+pub enum NodeRef {
+    Id(usize),
+    Label(String),
+}
 
 #[pyclass(eq, eq_int)]
 #[derive(Clone, PartialEq, Default)]
@@ -75,7 +80,6 @@ macro_rules! with_graph {
                 let $g = (*inner).borrow();
                 $body
             },
-
         }
     }
 }
@@ -157,7 +161,7 @@ impl Graph {
                     .map(|(px, py)| (Some(px), Some(py)))
                     .unwrap_or((None, None));
                 crate::graph_core::node::_Node {
-                    label: label.clone(),
+                    label: Rc::from(label.as_str()),
                     index: Some(idx),
                     x,
                     y,
@@ -171,23 +175,57 @@ impl Graph {
     }
 
     #[pyo3(signature = (from_label, to_label, weight=0., directed=false))]
-    fn create_connection(&self, from_label: String, to_label: String, weight: f32, directed: Option<bool>) {
+    fn create_connection(&self, from_label: NodeRef, to_label: NodeRef, weight: f32, directed: Option<bool>) {
         with_graph_mut!(self, |g| {
-            g.create_connection(from_label, to_label, weight, directed);
+            let from_idx = match from_label {
+                NodeRef::Id(id) => id,
+                NodeRef::Label(label) => g.label_to_id(&label).unwrap_or_else(|| panic!("Node '{}' not found", label)),
+            };
+            let to_idx = match to_label {
+                NodeRef::Id(id) => id,
+                NodeRef::Label(label) => g.label_to_id(&label).unwrap_or_else(|| panic!("Node '{}' not found", label)),
+            };
+            g.create_connection_by_id(from_idx, to_idx, weight, directed);
         });
     }
 
+    #[pyo3(signature = (count))]
+    fn add_nodes(&mut self, count: usize) {
+        with_graph_mut!(self, |g| {
+            g.batch_add_anonymous_nodes(count);
+        });
+    }
+
+
+    #[pyo3(signature = (connections))]
+    fn add_edges_from_ids(&mut self, connections: Vec<(usize, usize, f32, Option<bool>)>) {
+        let mapped_edges: Vec<(usize, usize, f32, bool)> = connections
+            .into_iter()
+            .map(|(u, v, w, d)| (u, v, w, d.unwrap_or(false)))
+            .collect();
+
+        with_graph_mut!(self, |g| {
+            g.batch_create_connections_from_ids(&mapped_edges);
+        });
+    }
+
+
     #[pyo3(signature = (labels))]
     fn add_nodes_from(&mut self, labels: Vec<String>) {
+        let borrowed: Vec<&str> = labels.iter().map(String::as_str).collect();
         with_graph_mut!(self, |g| {
-            g.batch_add_nodes(labels);
+            g.batch_add_nodes(borrowed);
         });
     }
 
     #[pyo3(signature = (connections))]
     fn add_edges_from(&mut self, connections: Vec<(String, String, f32, Option<bool>)>) {
+        let borrowed: Vec<(&str, &str, f32, Option<bool>)> = connections
+            .iter()
+            .map(|(from, to, weight, directed)| (from.as_str(), to.as_str(), *weight, *directed))
+            .collect();
         with_graph_mut!(self, |g| {
-            g.batch_create_connections(connections);
+            g.batch_create_connections(borrowed);
         });
     }
 
@@ -197,24 +235,27 @@ impl Graph {
         return PyEdgeIterator { inner: Box::new(edges.into_iter()) };
     }
 
-    fn node_by_label(&self, node_label: &str, py: Python<'_>) ->  PyResult<Py<Node>> {
-        let node_val_opt = with_graph!(self, |g| {
-            if g.structure.manages_labels() {
-                g.structure.get_id_by_label(node_label).map(|idx| {
-                    let (x, y) = g.structure.get_node_position(idx)
-                        .map(|(px, py)| (Some(px), Some(py)))
-                        .unwrap_or((None, None));
-                    crate::graph_core::node::_Node {
-                        label: node_label.to_string(),
-                        index: Some(idx),
-                        x,
-                        y,
-                    }
-                })
-            } else {
-                g.metadata.label_id_map.get(node_label).map(|&idx| g.metadata.node_info[idx].clone())
-            }
-        });
+    fn node_by_label(&self, node_label: NodeRef, py: Python<'_>) ->  PyResult<Py<Node>> {
+        let node_val_opt = match node_label {
+            NodeRef::Id(id) => with_graph!(self, |g| g.node_by_id(id)),
+            NodeRef::Label(label) => with_graph!(self, |g| {
+                if g.structure.manages_labels() {
+                    g.structure.get_id_by_label(&label).map(|idx| {
+                        let (x, y) = g.structure.get_node_position(idx)
+                            .map(|(px, py)| (Some(px), Some(py)))
+                            .unwrap_or((None, None));
+                        crate::graph_core::node::_Node {
+                            label: Rc::from(label.as_str()),
+                            index: Some(idx),
+                            x,
+                            y,
+                        }
+                    })
+                } else {
+                    g.metadata.label_id_map.get(label.as_str()).map(|&idx| g.metadata.node_info[idx].clone())
+                }
+            }),
+        };
 
         if let Some(node_val) = node_val_opt {
             let node = Node { inner: node_val };
@@ -271,8 +312,11 @@ impl Graph {
         return Ok(with_graph_mut!(self, |g| g.get_density(directed)));
     }
 
-    pub fn compute_degrees(&self, node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let degrees_snapshot = with_graph_mut!(self, |g| g.compute_degrees(node_label));
+    pub fn compute_degrees(&self, node_label: NodeRef, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let degrees_snapshot = match node_label {
+            NodeRef::Id(id) => with_graph_mut!(self, |g| g.compute_degrees_by_id(id)),
+            NodeRef::Label(label) => with_graph_mut!(self, |g| g.compute_degrees(&label)),
+        };
         let degrees = PyDict::new(py);
 
         for (key, value) in degrees_snapshot.iter() {
@@ -282,8 +326,11 @@ impl Graph {
         return Ok(degrees.into());
     }
 
-    pub fn get_centrality_degrees(&self, node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let centrality_snapshot = with_graph_mut!(self, |g| g.get_centrality_degrees(node_label));
+    pub fn get_centrality_degrees(&self, node_label: NodeRef, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let centrality_snapshot = match node_label {
+            NodeRef::Id(id) => with_graph_mut!(self, |g| g.get_centrality_degrees_by_id(id)),
+            NodeRef::Label(label) => with_graph_mut!(self, |g| g.get_centrality_degrees(&label)),
+        };
         let centralities = PyDict::new(py);
 
         for (key, value) in centrality_snapshot.iter() {
@@ -293,8 +340,11 @@ impl Graph {
         return Ok(centralities.into());
     }
 
-    pub fn get_node_strength(&self, node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let strength_snapshot = with_graph_mut!(self, |g| g.get_node_strength(node_label));
+    pub fn get_node_strength(&self, node_label: NodeRef, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let strength_snapshot = match node_label {
+            NodeRef::Id(id) => with_graph_mut!(self, |g| g.get_node_strength_by_id(id)),
+            NodeRef::Label(label) => with_graph_mut!(self, |g| g.get_node_strength(&label)),
+        };
         let strength = PyDict::new(py);
 
         for (key, value) in strength_snapshot.iter() {
@@ -359,25 +409,126 @@ impl Graph {
         return Ok(skewness.into());
     }
 
-    pub fn dfs(&mut self, start_node_label: &str) -> Vec<String> {
-        let elements = with_graph_mut!(self, |g| g.dfs(start_node_label));
-        return elements;
+    pub fn dfs(&mut self, start_node_label: NodeRef, py: Python<'_>) -> PyResult<Py<PyList>> {
+        match start_node_label {
+            NodeRef::Id(id) => {
+                let elements = with_graph_mut!(self, |g| g.dfs_by_id(id));
+                return Ok(PyList::new(py, elements)?.unbind());
+            },
+            NodeRef::Label(label) => {
+                let elements = with_graph_mut!(self, |g| g.dfs(&label));
+                return Ok(PyList::new(py, elements)?.unbind());
+            },
+        }
     }
 
-    pub fn bfs(&mut self, start_node_label: &str) -> Vec<String> {
-        let elements = with_graph_mut!(self, |g| g.bfs(start_node_label));
-        return elements;
+    pub fn bfs(&mut self, start_node_label: NodeRef, py: Python<'_>) -> PyResult<Py<PyList>> {
+        match start_node_label {
+            NodeRef::Id(id) => {
+                let elements = with_graph_mut!(self, |g| g.bfs_by_id(id));
+                return Ok(PyList::new(py, elements)?.unbind());
+            },
+            NodeRef::Label(label) => {
+                let elements = with_graph_mut!(self, |g| g.bfs(&label));
+                return Ok(PyList::new(py, elements)?.unbind());
+            },
+        }
     }
 
-    pub fn dijkstra(&self, start_node_label: &str, py: Python<'_>) -> PyResult<Py<PyDict>> {
-        let dijkstra_snapshot = with_graph_mut!(self, |g| g.dijkstra(start_node_label));
-        let dijkstra = PyDict::new(py);
+   pub fn dijkstra(&self, start_node_label: NodeRef, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        match start_node_label {
+            NodeRef::Id(id) => {
+                let distances = with_graph_mut!(self, |g| g.dijkstra_by_id(id));
+                return Ok(PyList::new(py, distances)?.into_any().unbind());
+            },
+            NodeRef::Label(label) => {
+                let distances = with_graph_mut!(self, |g| g.dijkstra(&label));
+                let dijkstra = PyDict::new(py);
+                for (key, value) in distances.iter() {
+                    dijkstra.set_item(key, value)?;
+                }
+                return Ok(dijkstra.into_any().unbind());
+            },
+        }
+    }
 
-        for (key, value) in dijkstra_snapshot.iter() {
-            dijkstra.set_item(key, value)?;
+    pub fn closeness_centrality(&self, node_label: NodeRef) -> PyResult<f32> {
+        let result = match node_label {
+            NodeRef::Id(id) => with_graph_mut!(self, |g| g.closeness_centrality_by_id(id)),
+            NodeRef::Label(label) => with_graph_mut!(self, |g| g.closeness_centrality(&label)),
+        };
+        return Ok(result);
+    }
+
+    pub fn closeness_centrality_all(&self) -> PyResult<Vec<f32>> {
+        let scores = with_graph_mut!(self, |g| g.closeness_centrality_all());
+        return Ok(scores);
+    }
+
+    pub fn connected_components(&self) -> PyResult<Vec<usize>> {
+        let component_ids = with_graph_mut!(self, |g| g.connected_components());
+        return Ok(component_ids);
+    }
+
+    pub fn connected_components_count(&self) -> PyResult<usize> {
+        let count = with_graph_mut!(self, |g| g.connected_components_count());
+        return Ok(count);
+    }
+
+    pub fn connected_components_grouped(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let grouped_snapshot = with_graph_mut!(self, |g| g.connected_components_grouped());
+        let grouped = PyDict::new(py);
+
+        for (key, value) in grouped_snapshot.iter() {
+            grouped.set_item(key, value)?;
         }
 
-        return Ok(dijkstra.into());
+        return Ok(grouped.into());
+    }
+
+    #[pyo3(signature = (damping=0.85, max_iter=100, tolerance=1e-6))]
+    pub fn pagerank(&self, damping: f32, max_iter: usize, tolerance: f32) -> PyResult<Vec<f32>> {
+        let scores = with_graph_mut!(self, |g| g.pagerank(damping, max_iter, tolerance));
+        return Ok(scores);
+    }
+
+    pub fn triangle_count(&self) -> PyResult<usize> {
+        let total = with_graph_mut!(self, |g| g.triangle_count());
+        return Ok(total);
+    }
+
+    pub fn triangle_count_by_node(&self) -> PyResult<Vec<usize>> {
+        let counts = with_graph_mut!(self, |g| g.triangle_count_by_node());
+        return Ok(counts);
+    }
+
+    pub fn betweenness_centrality(&self) -> PyResult<Vec<f32>> {
+        let scores = with_graph_mut!(self, |g| g.betweenness_centrality());
+        return Ok(scores);
+    }
+
+    pub fn clustering_coefficient(&self, node_label: NodeRef) -> PyResult<f32> {
+        let result = match node_label {
+            NodeRef::Id(id) => with_graph_mut!(self, |g| g.clustering_coefficient_by_id(id)),
+            NodeRef::Label(label) => with_graph_mut!(self, |g| g.clustering_coefficient(&label)),
+        };
+        return Ok(result);
+    }
+
+    pub fn transitivity(&self) -> PyResult<f32> {
+        let result = with_graph_mut!(self, |g| g.transitivity());
+        return Ok(result);
+    }
+
+    pub fn k_core_decomposition(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {
+        let core_snapshot = with_graph_mut!(self, |g| g.k_core_decomposition());
+        let core = PyDict::new(py);
+
+        for (key, value) in core_snapshot.iter() {
+            core.set_item(key, value)?;
+        }
+
+        return Ok(core.into());
     }
 
     #[pyo3(signature = (layout=Layout::Random, override_positions=false, style=None))]

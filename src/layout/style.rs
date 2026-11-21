@@ -1,7 +1,8 @@
+#[cfg(feature = "python")]
 use pyo3::prelude::*;
 
 
-#[pyclass(get_all, set_all)]
+#[cfg_attr(feature = "python", pyclass(get_all, set_all))]
 #[derive(Clone, PartialEq)]
 pub struct GraphStyle {
     pub node_color: String,
@@ -37,6 +38,7 @@ impl GraphStyle {
     }
 }
 
+#[cfg(feature = "python")]
 #[pymethods]
 impl GraphStyle {
     #[new]

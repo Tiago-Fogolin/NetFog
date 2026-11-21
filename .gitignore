@@ -1,1 +1,9 @@
 /target
+netfogr/src/rust/target
+netfogr/src/rust/r_import_lib
+netfogr/src/rust/r_import_lib_gnu
+netfogr/src/rust/entrypoint.o
+netfogr/src/netfogr.dll
+netfogr/src/*.o
+netfogr/src/*.def
+TODO.md

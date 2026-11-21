@@ -322,3 +322,257 @@ fn test_get_skewness() {
     assert_abs_diff_eq!(skewness["undirected_skewness"], 0.8666, epsilon = 1e-4);
 
 }
+
+fn create_path_of_three() -> _Graph {
+    let mut graph = _Graph::default();
+    graph.add_node("A".to_string());
+    graph.add_node("B".to_string());
+    graph.add_node("C".to_string());
+
+    graph.create_connection("A".to_string(), "B".to_string(), 1., Some(false));
+    graph.create_connection("B".to_string(), "C".to_string(), 1., Some(false));
+
+    return graph;
+}
+
+fn create_triangle() -> _Graph {
+    let mut graph = _Graph::default();
+    graph.add_node("A".to_string());
+    graph.add_node("B".to_string());
+    graph.add_node("C".to_string());
+
+    graph.create_connection("A".to_string(), "B".to_string(), 1., Some(false));
+    graph.create_connection("B".to_string(), "C".to_string(), 1., Some(false));
+    graph.create_connection("C".to_string(), "A".to_string(), 1., Some(false));
+
+    return graph;
+}
+
+fn create_two_triangles_sharing_edge() -> _Graph {
+    let mut graph = _Graph::default();
+    graph.add_node("A".to_string());
+    graph.add_node("B".to_string());
+    graph.add_node("C".to_string());
+    graph.add_node("D".to_string());
+
+    graph.create_connection("A".to_string(), "B".to_string(), 1., Some(false));
+    graph.create_connection("B".to_string(), "C".to_string(), 1., Some(false));
+    graph.create_connection("C".to_string(), "A".to_string(), 1., Some(false));
+    graph.create_connection("B".to_string(), "D".to_string(), 1., Some(false));
+    graph.create_connection("C".to_string(), "D".to_string(), 1., Some(false));
+
+    return graph;
+}
+
+fn create_star_of_four() -> _Graph {
+    let mut graph = _Graph::default();
+    graph.add_node("Center".to_string());
+    graph.add_node("A".to_string());
+    graph.add_node("B".to_string());
+    graph.add_node("C".to_string());
+
+    graph.create_connection("Center".to_string(), "A".to_string(), 1., Some(false));
+    graph.create_connection("Center".to_string(), "B".to_string(), 1., Some(false));
+    graph.create_connection("Center".to_string(), "C".to_string(), 1., Some(false));
+
+    return graph;
+}
+
+#[test]
+fn test_closeness_centrality_path_of_three() {
+    let mut graph = create_path_of_three();
+
+    assert_abs_diff_eq!(graph.closeness_centrality("B"), 0.5, epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.closeness_centrality("A"), 1. / 3., epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.closeness_centrality("C"), 1. / 3., epsilon = 1e-5);
+}
+
+#[test]
+fn test_closeness_centrality_triangle_is_equal_everywhere() {
+    let mut graph = create_triangle();
+
+    assert_abs_diff_eq!(graph.closeness_centrality("A"), 0.5, epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.closeness_centrality("B"), 0.5, epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.closeness_centrality("C"), 0.5, epsilon = 1e-5);
+}
+
+#[test]
+fn test_closeness_centrality_unreachable_node_is_zero() {
+    let mut graph = _Graph::default();
+    graph.add_node("A".to_string());
+    graph.add_node("B".to_string());
+    graph.add_node("C".to_string());
+
+    graph.create_connection("A".to_string(), "B".to_string(), 1., Some(false));
+
+    assert_eq!(graph.closeness_centrality("A"), 0.);
+}
+
+#[test]
+fn test_closeness_centrality_all_matches_per_node_path_of_three() {
+    let mut graph = create_path_of_three();
+
+    let scores = graph.closeness_centrality_all();
+
+    assert_abs_diff_eq!(scores[0], 1. / 3., epsilon = 1e-5);
+    assert_abs_diff_eq!(scores[1], 0.5, epsilon = 1e-5);
+    assert_abs_diff_eq!(scores[2], 1. / 3., epsilon = 1e-5);
+}
+
+#[test]
+fn test_closeness_centrality_all_matches_per_node_triangle() {
+    let mut graph = create_triangle();
+
+    let scores = graph.closeness_centrality_all();
+
+    assert_abs_diff_eq!(scores[0], 0.5, epsilon = 1e-5);
+    assert_abs_diff_eq!(scores[1], 0.5, epsilon = 1e-5);
+    assert_abs_diff_eq!(scores[2], 0.5, epsilon = 1e-5);
+}
+
+#[test]
+fn test_closeness_centrality_all_unreachable_node_is_zero() {
+    let mut graph = _Graph::default();
+    graph.add_node("A".to_string());
+    graph.add_node("B".to_string());
+    graph.add_node("C".to_string());
+
+    graph.create_connection("A".to_string(), "B".to_string(), 1., Some(false));
+
+    let scores = graph.closeness_centrality_all();
+
+    assert_eq!(scores[0], 0.);
+    assert_eq!(scores[1], 0.);
+    assert_eq!(scores[2], 0.);
+}
+
+#[test]
+fn test_closeness_centrality_all_empty_graph() {
+    let mut graph = _Graph::default();
+
+    assert_eq!(graph.closeness_centrality_all().len(), 0);
+}
+
+#[test]
+fn test_clustering_coefficient_triangle_is_one() {
+    let mut graph = create_triangle();
+
+    assert_abs_diff_eq!(graph.clustering_coefficient("A"), 1., epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.clustering_coefficient("B"), 1., epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.clustering_coefficient("C"), 1., epsilon = 1e-5);
+}
+
+#[test]
+fn test_clustering_coefficient_path_is_zero() {
+    let mut graph = create_path_of_three();
+
+    assert_abs_diff_eq!(graph.clustering_coefficient("A"), 0., epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.clustering_coefficient("B"), 0., epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.clustering_coefficient("C"), 0., epsilon = 1e-5);
+}
+
+#[test]
+fn test_clustering_coefficient_two_triangles_sharing_an_edge() {
+    let mut graph = create_two_triangles_sharing_edge();
+
+    assert_abs_diff_eq!(graph.clustering_coefficient("A"), 1., epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.clustering_coefficient("D"), 1., epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.clustering_coefficient("B"), 2. / 3., epsilon = 1e-5);
+    assert_abs_diff_eq!(graph.clustering_coefficient("C"), 2. / 3., epsilon = 1e-5);
+}
+
+#[test]
+fn test_transitivity_triangle_is_one() {
+    let mut graph = create_triangle();
+
+    assert_abs_diff_eq!(graph.transitivity(), 1., epsilon = 1e-5);
+}
+
+#[test]
+fn test_transitivity_path_is_zero() {
+    let mut graph = create_path_of_three();
+
+    assert_abs_diff_eq!(graph.transitivity(), 0., epsilon = 1e-5);
+}
+
+#[test]
+fn test_transitivity_two_triangles_sharing_an_edge() {
+    let mut graph = create_two_triangles_sharing_edge();
+
+    assert_abs_diff_eq!(graph.transitivity(), 0.75, epsilon = 1e-5);
+}
+
+#[test]
+fn test_transitivity_empty_graph_is_zero() {
+    let mut graph = _Graph::default();
+
+    assert_eq!(graph.transitivity(), 0.);
+}
+
+#[test]
+fn test_k_core_decomposition_triangle() {
+    let mut graph = create_triangle();
+    let core = graph.k_core_decomposition();
+
+    let a = graph.label_to_id("A").expect("A not found");
+    let b = graph.label_to_id("B").expect("B not found");
+    let c = graph.label_to_id("C").expect("C not found");
+
+    assert_eq!(core[&a], 2);
+    assert_eq!(core[&b], 2);
+    assert_eq!(core[&c], 2);
+}
+
+#[test]
+fn test_k_core_decomposition_path_of_three() {
+    let mut graph = create_path_of_three();
+    let core = graph.k_core_decomposition();
+
+    let a = graph.label_to_id("A").expect("A not found");
+    let b = graph.label_to_id("B").expect("B not found");
+    let c = graph.label_to_id("C").expect("C not found");
+
+    assert_eq!(core[&a], 1);
+    assert_eq!(core[&b], 1);
+    assert_eq!(core[&c], 1);
+}
+
+#[test]
+fn test_k_core_decomposition_star_of_four() {
+    let mut graph = create_star_of_four();
+    let core = graph.k_core_decomposition();
+
+    for value in core.values() {
+        assert_eq!(*value, 1);
+    }
+}
+
+#[test]
+fn test_k_core_decomposition_two_triangles_sharing_an_edge() {
+    let mut graph = create_two_triangles_sharing_edge();
+    let core = graph.k_core_decomposition();
+
+    for value in core.values() {
+        assert_eq!(*value, 2);
+    }
+}
+
+#[test]
+fn test_k_core_decomposition_isolated_nodes() {
+    let mut graph = _Graph::default();
+    graph.batch_add_anonymous_nodes(3);
+
+    let core = graph.k_core_decomposition();
+
+    for value in core.values() {
+        assert_eq!(*value, 0);
+    }
+}
+
+#[test]
+fn test_k_core_decomposition_empty_graph() {
+    let mut graph = _Graph::default();
+    let core = graph.k_core_decomposition();
+
+    assert_eq!(core.len(), 0);
+}

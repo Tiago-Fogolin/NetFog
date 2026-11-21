@@ -4,8 +4,9 @@ use crate::graph_core::node::_Node;
 use crate::visualization::generate_visualization;
 use crate::file_writer_core::file_writer::{write_edge_list_file, write_json_file, write_mtx_file, write_net_file};
 use std::f64;
+use std::rc::Rc;
 use std::time::Instant;
-use std::{collections::HashMap, collections::HashSet, collections::VecDeque};
+use std::{collections::HashMap, collections::VecDeque, collections::BinaryHeap};
 use crate::graph_core::graph_metadata::GraphMetadata;
 use crate::graph_core::graph_structure_interface::IGraphStructure;
 use crate::graph_core::adjacency_list::AdjacencyList;
@@ -44,7 +45,7 @@ pub struct _Graph<S: IGraphStructure = AdjacencyList> {
 
 
 impl<S: IGraphStructure> _Graph<S> {
-    fn label_to_id(&self, label: &str) -> Option<usize> {
+    pub fn label_to_id(&self, label: &str) -> Option<usize> {
         if self.structure.manages_labels() {
             self.structure.get_id_by_label(label)
         } else {
@@ -53,10 +54,12 @@ impl<S: IGraphStructure> _Graph<S> {
     }
 
     pub fn add_node(&mut self, label: String) {
+        self.metadata.check_label_mode(true);
+
         let exists = if self.structure.manages_labels() {
             self.structure.get_id_by_label(&label).is_some()
         } else {
-            self.metadata.label_id_map.contains_key(&label)
+            self.metadata.label_id_map.contains_key(label.as_str())
         };
 
         if exists {
@@ -69,23 +72,26 @@ impl<S: IGraphStructure> _Graph<S> {
         if self.structure.manages_labels() {
             self.structure.set_node_label(index, &label);
         } else {
+            let label: Rc<str> = label.into();
             let new_node = _Node {
                 label: label.clone(),
                 index: Some(index),
                 x: None,
                 y: None,
             };
-            self.metadata.label_id_map.insert(label.clone(), index);
+            self.metadata.label_id_map.insert(label, index);
             self.metadata.node_info.push(new_node);
         }
     }
 
 
     pub fn add_node_with_pos(&mut self, label: String, x: f64, y: f64) {
+        self.metadata.check_label_mode(true);
+
         let exists = if self.structure.manages_labels() {
             self.structure.get_id_by_label(&label).is_some()
         } else {
-            self.metadata.label_id_map.contains_key(&label)
+            self.metadata.label_id_map.contains_key(label.as_str())
         };
 
         if exists {
@@ -100,13 +106,14 @@ impl<S: IGraphStructure> _Graph<S> {
             self.structure.set_node_label(index, &label);
             self.structure.set_node_position(index, x, y);
         } else {
+            let label: Rc<str> = label.into();
             let new_node = _Node {
                 label: label.clone(),
                 index: Some(index),
                 x: Some(x),
                 y: Some(y),
             };
-            self.metadata.label_id_map.insert(label.clone(), index);
+            self.metadata.label_id_map.insert(label, index);
             self.metadata.node_info.push(new_node);
         }
     }
@@ -118,18 +125,83 @@ impl<S: IGraphStructure> _Graph<S> {
         self.structure.create_connection(from_idx, to_idx, weight, directed);
     }
 
-    pub fn batch_add_nodes(&mut self, labels: Vec<String>) {
-        for label in labels {
-            self.add_node(label);
-        }
+    pub fn create_connection_by_id(&mut self, from: usize, to: usize, weight: f32, directed: Option<bool>) {
+        self.structure.create_connection(from, to, weight, directed);
     }
 
-    pub fn batch_create_connections(&mut self, connections: Vec<(String, String, f32, Option<bool>)>) {
+    pub fn batch_add_nodes(&mut self, labels: Vec<&str>) {
+        self.metadata.check_label_mode(true);
+
+        if self.structure.manages_labels() {
+            for label in labels {
+                self.add_node(label.to_string());
+            }
+            return;
+        }
+
+        self.metadata.label_id_map.reserve(labels.len());
+        self.metadata.node_info.reserve(labels.len());
+
+        let base_index = self.structure.node_count();
+        let mut added_count: usize = 0;
+
+        for label in labels {
+            if self.metadata.label_id_map.contains_key(label) {
+                println!("Node with label '{}' already exists!", label);
+                continue;
+            }
+
+            let index = base_index + added_count;
+            let owned_label: Rc<str> = Rc::from(label);
+
+            let new_node = _Node {
+                label: owned_label.clone(),
+                index: Some(index),
+                x: None,
+                y: None,
+            };
+
+            self.metadata.label_id_map.insert(owned_label, index);
+            self.metadata.node_info.push(new_node);
+            added_count += 1;
+        }
+
+        self.structure.batch_add_nodes(added_count);
+    }
+
+    pub fn batch_add_anonymous_nodes(&mut self, count: usize) {
+        self.metadata.check_label_mode(false);
+
+        thread_local! {
+            static EMPTY_LABEL: Rc<str> = Rc::from("");
+        }
+
+        self.metadata.node_info.reserve(count);
+        let base_index = self.structure.node_count();
+        let empty_label = EMPTY_LABEL.with(|empty| empty.clone());
+
+        for i in 0..count {
+            self.metadata.node_info.push(_Node {
+                label: empty_label.clone(),
+                index: Some(base_index + i),
+                x: None,
+                y: None,
+            });
+        }
+
+        self.structure.batch_add_nodes(count);
+    }
+
+    pub fn batch_create_connections_from_ids(&mut self, connections: &[(usize, usize, f32, bool)]) {
+        self.structure.batch_create_connections(connections);
+    }
+
+    pub fn batch_create_connections(&mut self, connections: Vec<(&str, &str, f32, Option<bool>)>) {
         let mut mapped_edges = Vec::with_capacity(connections.len());
 
         for (from, to, weight, directed) in connections {
-            let from_idx = self.label_to_id(&from).unwrap_or_else(|| panic!("Node '{}' not found", from));
-            let to_idx = self.label_to_id(&to).unwrap_or_else(|| panic!("Node '{}' not found", to));
+            let from_idx = self.label_to_id(from).unwrap_or_else(|| panic!("Node '{}' not found", from));
+            let to_idx = self.label_to_id(to).unwrap_or_else(|| panic!("Node '{}' not found", to));
 
             let is_directed = directed.unwrap_or(false);
             mapped_edges.push((from_idx, to_idx, weight, is_directed));
@@ -146,13 +218,28 @@ impl<S: IGraphStructure> _Graph<S> {
         self.metadata.label_id_map.get(label).copied().map(move |idx| &mut self.metadata.node_info[idx])
     }
 
+    pub fn node_by_id(&self, id: usize) -> Option<_Node> {
+        if self.structure.manages_labels() {
+            let label = self.structure.resolve_label(id)?;
+            let (x, y) = self.structure.get_node_position(id)
+                .map(|(px, py)| (Some(px), Some(py)))
+                .unwrap_or((None, None));
+            return Some(_Node { label: label.into(), index: Some(id), x, y });
+        }
+
+        return self.metadata.node_info.get(id).cloned();
+    }
+
     pub fn resolve_label(&self, id: usize) -> String {
         if let Some(label) = self.structure.resolve_label(id) {
             return label;
         }
 
         if id < self.metadata.node_info.len() {
-            return self.metadata.node_info[id].label.clone();
+            let label = &self.metadata.node_info[id].label;
+            if !label.is_empty() {
+                return label.to_string();
+            }
         }
 
         return format!("{}", id);
@@ -244,17 +331,12 @@ impl<S: IGraphStructure> _Graph<S> {
         return self.get_total_weight() as f32 / self.get_edge_count() as f32;
     }
 
-    pub fn compute_degrees(&mut self, node_label: &str) -> HashMap<String, i32> {
+    pub fn compute_degrees_by_id(&mut self, target_idx: usize) -> HashMap<String, i32> {
         let mut degrees: HashMap<String, i32> = HashMap::new();
         degrees.insert("in_degree".to_string(), 0);
         degrees.insert("out_degree".to_string(), 0);
         degrees.insert("total_degree".to_string(), 0);
         degrees.insert("undirected_degree".to_string(), 0);
-
-        let target_idx = match self.label_to_id(node_label) {
-            Some(idx) => idx,
-            None => return degrees,
-        };
 
         let edges = self.structure.get_all_edges();
 
@@ -279,16 +361,30 @@ impl<S: IGraphStructure> _Graph<S> {
         return degrees;
     }
 
+    pub fn compute_degrees(&mut self, node_label: &str) -> HashMap<String, i32> {
+        let target_idx = match self.label_to_id(node_label) {
+            Some(idx) => idx,
+            None => {
+                let mut degrees: HashMap<String, i32> = HashMap::new();
+                degrees.insert("in_degree".to_string(), 0);
+                degrees.insert("out_degree".to_string(), 0);
+                degrees.insert("total_degree".to_string(), 0);
+                degrees.insert("undirected_degree".to_string(), 0);
+                return degrees;
+            },
+        };
+
+        return self.compute_degrees_by_id(target_idx);
+    }
+
     pub fn get_all_nodes_degrees(&mut self) -> HashMap<String, HashMap<String, i32>> {
         let mut degree_hash: HashMap<String, HashMap<String, i32>> = HashMap::new();
+        let count = self.get_node_count();
 
-        let labels: Vec<String> = (0..self.get_node_count())
-            .map(|i| self.resolve_label(i))
-            .collect();
-
-        for label in labels {
-            let degree = self.compute_degrees(&label);
-            degree_hash.insert(label,degree);
+        for i in 0..count {
+            let label = self.resolve_label(i);
+            let degree = self.compute_degrees_by_id(i);
+            degree_hash.insert(label, degree);
         }
 
         return degree_hash;
@@ -311,16 +407,11 @@ impl<S: IGraphStructure> _Graph<S> {
         return mean;
     }
 
-    pub fn get_node_strength(&mut self, node_label: &str) -> HashMap<&'static str, f32> {
+    pub fn get_node_strength_by_id(&mut self, target_idx: usize) -> HashMap<&'static str, f32> {
         let mut strengths: HashMap<&str, f32> = HashMap::new();
         strengths.insert("out_strength", 0.);
         strengths.insert("in_strength", 0.);
         strengths.insert("total_strength", 0.);
-
-        let target_idx = match self.label_to_id(node_label) {
-            Some(idx) => idx,
-            None => return strengths,
-        };
 
         let edges = self.structure.get_all_edges();
 
@@ -345,11 +436,23 @@ impl<S: IGraphStructure> _Graph<S> {
         return strengths;
     }
 
-    pub fn get_centrality_degrees(&mut self, node_label: &str) -> HashMap<&'static str, f32> {
-        let mut centralities: HashMap<&str, f32> = HashMap::new();
+    pub fn get_node_strength(&mut self, node_label: &str) -> HashMap<&'static str, f32> {
+        let target_idx = match self.label_to_id(node_label) {
+            Some(idx) => idx,
+            None => {
+                let mut strengths: HashMap<&str, f32> = HashMap::new();
+                strengths.insert("out_strength", 0.);
+                strengths.insert("in_strength", 0.);
+                strengths.insert("total_strength", 0.);
+                return strengths;
+            },
+        };
 
-        let degrees = self.compute_degrees(node_label);
-        let node_count = self.get_node_count();
+        return self.get_node_strength_by_id(target_idx);
+    }
+
+    fn centrality_from_degrees(degrees: &HashMap<String, i32>, node_count: usize) -> HashMap<&'static str, f32> {
+        let mut centralities: HashMap<&str, f32> = HashMap::new();
 
         if node_count <= 1 {
             return centralities;
@@ -363,16 +466,26 @@ impl<S: IGraphStructure> _Graph<S> {
         return centralities;
     }
 
+    pub fn get_centrality_degrees_by_id(&mut self, target_idx: usize) -> HashMap<&'static str, f32> {
+        let degrees = self.compute_degrees_by_id(target_idx);
+        let node_count = self.get_node_count();
+        return Self::centrality_from_degrees(&degrees, node_count);
+    }
+
+    pub fn get_centrality_degrees(&mut self, node_label: &str) -> HashMap<&'static str, f32> {
+        let degrees = self.compute_degrees(node_label);
+        let node_count = self.get_node_count();
+        return Self::centrality_from_degrees(&degrees, node_count);
+    }
+
     pub fn get_degree_distribution(&mut self) -> HashMap<&'static str, HashMap<i32 ,f32>>{
         let mut computed_degrees: Vec<HashMap<String, i32>> = Vec::new();
 
-        let labels: Vec<String> = (0..self.get_node_count()).map(|i| self.resolve_label(i)).collect();
-
-        for label in &labels {
-            computed_degrees.push(self.compute_degrees(label));
-        }
-
         let node_count = self.get_node_count();
+
+        for i in 0..node_count {
+            computed_degrees.push(self.compute_degrees_by_id(i));
+        }
         let mut count_in_degree: HashMap<i32, i32> = HashMap::new();
         let mut count_out_degree: HashMap<i32, i32> = HashMap::new();
         let mut count_undirected_degree: HashMap<i32, i32> = HashMap::new();
@@ -545,28 +658,25 @@ impl<S: IGraphStructure> _Graph<S> {
      * is that it'll be able to get a function that will be applied to each
      * node in the future (same thing to bfs)
      */
-    pub fn dfs(&mut self, start_node_label: &str) -> Vec<String> {
-        let mut final_order: Vec<String> = Vec::new();
-        let mut visited: HashSet<String> = HashSet::new();
-
-        let mut stack: Vec<usize> = Vec::new();
-        let starting_idx = self.label_to_id(start_node_label).expect("Error: Initial node not found");
-
-        stack.push(starting_idx);
+    pub fn dfs_by_id(&mut self, start_idx: usize) -> Vec<usize> {
+        let count = self.get_node_count();
+        let mut final_order: Vec<usize> = Vec::new();
+        let mut visited: Vec<bool> = vec![false; count];
+        let mut stack: Vec<usize> = vec![start_idx];
+        let mut neighbors_buf: Vec<usize> = Vec::new();
 
         while let Some(idx) = stack.pop() {
-            let label = self.resolve_label(idx);
-
-            if !visited.insert(label.clone()) {
+            if visited[idx] {
                 continue;
             }
+            visited[idx] = true;
 
-            final_order.push(label);
+            final_order.push(idx);
 
-            let neighbors = self.structure.get_neighbors_ids(idx);
-            for neighbor_idx in neighbors.into_iter().rev() {
-                let neighbor_label = self.resolve_label(neighbor_idx);
-                if !visited.contains(&neighbor_label) {
+            neighbors_buf.clear();
+            neighbors_buf.extend(self.structure.incident_neighbors(idx));
+            for &neighbor_idx in neighbors_buf.iter().rev() {
+                if !visited[neighbor_idx] {
                     stack.push(neighbor_idx);
                 }
             }
@@ -575,24 +685,26 @@ impl<S: IGraphStructure> _Graph<S> {
         return final_order;
     }
 
-    pub fn bfs(&mut self, start_node_label: &str) -> Vec<String> {
-        let mut final_order: Vec<String> = Vec::new();
-        let mut q: VecDeque<usize> = VecDeque::new();
-        let mut visited: HashSet<String> = HashSet::new();
-
+    pub fn dfs(&mut self, start_node_label: &str) -> Vec<String> {
         let starting_idx = self.label_to_id(start_node_label).expect("Error: Initial node not found");
+        return self.dfs_by_id(starting_idx).into_iter().map(|idx| self.resolve_label(idx)).collect();
+    }
 
-        visited.insert(start_node_label.to_string());
-        q.push_back(starting_idx);
+    pub fn bfs_by_id(&mut self, start_idx: usize) -> Vec<usize> {
+        let count = self.get_node_count();
+        let mut final_order: Vec<usize> = Vec::new();
+        let mut q: VecDeque<usize> = VecDeque::new();
+        let mut visited: Vec<bool> = vec![false; count];
+
+        visited[start_idx] = true;
+        q.push_back(start_idx);
 
         while let Some(idx) = q.pop_front() {
-            let label = self.resolve_label(idx);
-            final_order.push(label);
+            final_order.push(idx);
 
-            let neighbors = self.structure.get_neighbors_ids(idx);
-            for neighbor_idx in neighbors {
-                let neighbor_label = self.resolve_label(neighbor_idx);
-                if visited.insert(neighbor_label) {
+            for neighbor_idx in self.structure.incident_neighbors(idx) {
+                if !visited[neighbor_idx] {
+                    visited[neighbor_idx] = true;
                     q.push_back(neighbor_idx);
                 }
             }
@@ -601,48 +713,59 @@ impl<S: IGraphStructure> _Graph<S> {
         return final_order;
     }
 
-    pub fn dijkstra(&mut self, start_node_label: &str) -> HashMap<String, f64>{
-        let size = self.get_node_count();
-        let _start_idx = self.label_to_id(start_node_label).expect("Node not found");
-        let mut distances: HashMap<String, f64> = HashMap::new();
+    pub fn bfs(&mut self, start_node_label: &str) -> Vec<String> {
+        let starting_idx = self.label_to_id(start_node_label).expect("Error: Initial node not found");
+        return self.bfs_by_id(starting_idx).into_iter().map(|idx| self.resolve_label(idx)).collect();
+    }
 
-        for i in 0..size {
-            let lbl = self.resolve_label(i);
-            distances.insert(lbl, f64::INFINITY);
+    pub fn dijkstra_by_id(&mut self, start_idx: usize) -> Vec<f64> {
+        struct _HeapEntry {
+            distance: f64,
+            node: usize,
         }
 
-        distances.insert(start_node_label.to_string(), 0.);
+        impl PartialEq for _HeapEntry {
+            fn eq(&self, other: &Self) -> bool {
+                return self.distance == other.distance && self.node == other.node;
+            }
+        }
 
-        let mut visited = vec![false; size];
-        let adj_matrix = self.generate_adjacency_matrix();
+        impl Eq for _HeapEntry {}
 
-        for _ in 0..size {
-            let mut min_distance = f64::INFINITY;
-            let mut u: Option<usize> = None;
+        impl PartialOrd for _HeapEntry {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                return Some(self.cmp(other));
+            }
+        }
 
-            for i in 0..size {
-                let lbl = self.resolve_label(i);
-                if !visited[i] && distances[&lbl] < min_distance {
-                    min_distance = distances[&lbl];
-                    u = Some(i);
-                }
+        impl Ord for _HeapEntry {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                return other.distance.partial_cmp(&self.distance).unwrap_or(std::cmp::Ordering::Equal);
+            }
+        }
+
+        let size = self.get_node_count();
+        let mut distances: Vec<f64> = vec![f64::INFINITY; size];
+
+        if start_idx >= size {
+            return Vec::new();
+        }
+
+        distances[start_idx] = 0.;
+
+        let mut heap: BinaryHeap<_HeapEntry> = BinaryHeap::new();
+        heap.push(_HeapEntry { distance: 0., node: start_idx });
+
+        while let Some(_HeapEntry { distance, node }) = heap.pop() {
+            if distance > distances[node] {
+                continue;
             }
 
-            if u.is_none() {
-                break;
-            }
-            let u: usize = u.unwrap();
-            visited[u] = true;
-
-            for v in 0..size {
-                if adj_matrix[u][v] != 0. && !visited[v] {
-                    let u_lbl = self.resolve_label(u);
-                    let v_lbl = self.resolve_label(v);
-
-                    let alt = distances[&u_lbl] as f32 + adj_matrix[u][v];
-                    if alt < distances[&v_lbl] as f32 {
-                        distances.insert(v_lbl.clone(), alt as f64);
-                    }
+            for (neighbor_idx, weight) in self.structure.neighbors_with_weights(node) {
+                let next_distance = distance + weight as f64;
+                if next_distance < distances[neighbor_idx] {
+                    distances[neighbor_idx] = next_distance;
+                    heap.push(_HeapEntry { distance: next_distance, node: neighbor_idx });
                 }
             }
         }
@@ -650,10 +773,654 @@ impl<S: IGraphStructure> _Graph<S> {
         return distances;
     }
 
+    pub fn dijkstra(&mut self, start_node_label: &str) -> HashMap<String, f64>{
+        let start_idx = self.label_to_id(start_node_label).expect("Node not found");
+        let distances_by_id = self.dijkstra_by_id(start_idx);
+
+        let mut distances: HashMap<String, f64> = HashMap::with_capacity(distances_by_id.len());
+        for (idx, dist) in distances_by_id.into_iter().enumerate() {
+            distances.insert(self.resolve_label(idx), dist);
+        }
+
+        return distances;
+    }
+
+    pub fn closeness_centrality_by_id(&mut self, target_idx: usize) -> f32 {
+        let distances = self.dijkstra_by_id(target_idx);
+        let total_distance: f64 = distances.iter().sum();
+        let result = (1. / total_distance) as f32;
+
+        return result;
+    }
+
+    pub fn closeness_centrality(&mut self, node_label: &str) -> f32 {
+        let target_idx = self.label_to_id(node_label).expect("Node not found");
+
+        return self.closeness_centrality_by_id(target_idx);
+    }
+
+    pub fn closeness_centrality_all(&mut self) -> Vec<f32> {
+        struct _HeapEntry {
+            distance: f64,
+            node: usize,
+        }
+
+        impl PartialEq for _HeapEntry {
+            fn eq(&self, other: &Self) -> bool {
+                return self.distance == other.distance && self.node == other.node;
+            }
+        }
+
+        impl Eq for _HeapEntry {}
+
+        impl PartialOrd for _HeapEntry {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                return Some(self.cmp(other));
+            }
+        }
+
+        impl Ord for _HeapEntry {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                return other.distance.partial_cmp(&self.distance).unwrap_or(std::cmp::Ordering::Equal);
+            }
+        }
+
+        let count = self.get_node_count();
+
+        if count == 0 {
+            return Vec::new();
+        }
+
+        let result: Vec<f32> = (0..count)
+            .map(|start_idx| {
+                let mut distances: Vec<f64> = vec![f64::INFINITY; count];
+                distances[start_idx] = 0.;
+
+                let mut heap: BinaryHeap<_HeapEntry> = BinaryHeap::new();
+                heap.push(_HeapEntry { distance: 0., node: start_idx });
+
+                while let Some(_HeapEntry { distance, node }) = heap.pop() {
+                    if distance > distances[node] {
+                        continue;
+                    }
+
+                    for (neighbor_idx, weight) in self.structure.neighbors_with_weights(node) {
+                        let next_distance = distance + weight as f64;
+                        if next_distance < distances[neighbor_idx] {
+                            distances[neighbor_idx] = next_distance;
+                            heap.push(_HeapEntry { distance: next_distance, node: neighbor_idx });
+                        }
+                    }
+                }
+
+                let total_distance: f64 = distances.iter().sum();
+                return (1. / total_distance) as f32;
+            })
+            .collect();
+
+        return result;
+    }
+
+    fn cc_impl(&mut self) -> (Vec<usize>, usize) {
+        const NONE: usize = usize::MAX;
+        let count = self.get_node_count();
+        let mut comp = vec![NONE; count];
+        let mut queue: Vec<usize> = Vec::with_capacity(count);
+        let mut next = 0;
+
+        for start in 0..count {
+            if comp[start] != NONE {
+                continue;
+            }
+
+            comp[start] = next;
+            queue.clear();
+            queue.push(start);
+            let mut head = 0;
+
+            while head < queue.len() {
+                let node = queue[head];
+                head += 1;
+
+                for nb in self.structure.incident_neighbors(node) {
+                    if comp[nb] == NONE {
+                        comp[nb] = next;
+                        queue.push(nb);
+                    }
+                }
+            }
+
+            next += 1;
+        }
+
+        return (comp, next);
+    }
+
+    pub fn connected_components(&mut self) -> Vec<usize> {
+        return self.cc_impl().0;
+    }
+
+    pub fn connected_components_count(&mut self) -> usize {
+        return self.cc_impl().1;
+    }
+
+    pub fn connected_components_grouped(&mut self) -> HashMap<usize, Vec<usize>> {
+        let component_ids = self.connected_components();
+        let mut grouped: HashMap<usize, Vec<usize>> = HashMap::new();
+
+        for (node_id, component_id) in component_ids.into_iter().enumerate() {
+            grouped.entry(component_id).or_insert_with(Vec::new).push(node_id);
+        }
+
+        return grouped;
+    }
+
+    fn pagerank_jacobi_impl(&mut self, damping: f32, max_iter: usize, tolerance: f32, out_degree: &[usize]) -> Vec<f32> {
+        let count = self.get_node_count();
+
+        let mut pred_offsets: Vec<usize> = vec![0; count + 1];
+        for v in 0..count {
+            pred_offsets[v + 1] = pred_offsets[v] + self.structure.predecessors(v).count();
+        }
+
+        let mut pred_flat: Vec<usize> = vec![0; pred_offsets[count]];
+        let mut cursor: Vec<usize> = pred_offsets.clone();
+        for v in 0..count {
+            for u in self.structure.predecessors(v) {
+                pred_flat[cursor[v]] = u;
+                cursor[v] += 1;
+            }
+        }
+
+        let dangling_nodes: Vec<usize> = (0..count).filter(|&i| out_degree[i] == 0).collect();
+
+        let node_count_f = count as f32;
+        let teleport = (1. - damping) / node_count_f;
+
+        let mut ranks: Vec<f32> = vec![1. / node_count_f; count];
+        let mut contrib: Vec<f32> = vec![0.; count];
+
+        for _ in 0..max_iter {
+            let dangling_mass: f32 = dangling_nodes.iter().map(|&i| ranks[i]).sum();
+            let base_rank = teleport + damping * dangling_mass / node_count_f;
+
+            for u in 0..count {
+                if out_degree[u] > 0 {
+                    contrib[u] = ranks[u] / out_degree[u] as f32;
+                }
+            }
+
+            let mut delta: f32 = 0.;
+            for v in 0..count {
+                let mut incoming: f32 = 0.;
+                for &u in &pred_flat[pred_offsets[v]..pred_offsets[v + 1]] {
+                    incoming += contrib[u];
+                }
+
+                let new_rank = base_rank + damping * incoming;
+                delta += (new_rank - ranks[v]).abs();
+                ranks[v] = new_rank;
+            }
+
+            if delta < tolerance {
+                break;
+            }
+        }
+
+        return ranks;
+    }
+
+    
+    fn pagerank_gauss_seidel_impl(&mut self, damping: f32, max_iter: usize, tolerance: f32, out_degree: &[usize]) -> Vec<f32> {
+        let count = self.get_node_count();
+
+        let mut pred_offsets: Vec<usize> = vec![0; count + 1];
+        for v in 0..count {
+            pred_offsets[v + 1] = pred_offsets[v] + self.structure.predecessors(v).count();
+        }
+
+        let mut pred_flat: Vec<usize> = vec![0; pred_offsets[count]];
+        let mut cursor: Vec<usize> = pred_offsets.clone();
+        for v in 0..count {
+            for u in self.structure.predecessors(v) {
+                pred_flat[cursor[v]] = u;
+                cursor[v] += 1;
+            }
+        }
+
+        let n = count;
+        let base = (1.0 - damping) / n as f32;
+        let inv_out: Vec<f32> = out_degree.iter()
+            .map(|&d| if d > 0 { 1.0 / d as f32 } else { 0.0 }).collect();
+
+        let comp = self.connected_components();
+        let ncomp = comp.iter().max().map_or(0, |&m| m + 1);
+        let mut start: Vec<usize> = vec![0usize; ncomp + 1];
+        for &c in &comp {
+            start[c + 1] += 1;
+        }
+        for i in 0..ncomp {
+            start[i + 1] += start[i];
+        }
+        let mut order = vec![0usize; n];
+        let mut cur = start.clone();
+        for v in 0..n {
+            order[cur[comp[v]]] = v;
+            cur[comp[v]] += 1;
+        }
+
+        let mut ranks = vec![1.0 / n as f32; n];
+        let mut contrib: Vec<f32> = (0..n).map(|v| ranks[v] * inv_out[v]).collect();
+
+        for c in 0..ncomp {
+            let verts = &order[start[c]..start[c + 1]];
+            if verts.len() == 1 && pred_offsets[verts[0]] == pred_offsets[verts[0] + 1] {
+                ranks[verts[0]] = base;
+                contrib[verts[0]] = 0.0;
+                continue;
+            }
+
+            let tol_c = tolerance * verts.len() as f32 / n as f32;
+
+            for _ in 0..max_iter {
+                let mut delta = 0.0f32;
+
+                for &v in verts {
+                    let mut inc = 0.0f32;
+                    for &u in &pred_flat[pred_offsets[v]..pred_offsets[v + 1]] {
+                        inc += contrib[u];
+                    }
+
+                    let r = base + damping * inc;
+                    delta += (r - ranks[v]).abs();
+                    ranks[v] = r;
+                    contrib[v] = r * inv_out[v];
+                }
+
+                if delta < tol_c {
+                    break;
+                }
+            }
+        }
+
+        let s: f32 = ranks.iter().sum();
+        for r in ranks.iter_mut() {
+            *r /= s;
+        }
+
+        return ranks;
+    }
+
+    fn compute_out_degree(&self, count: usize) -> Vec<usize> {
+        let mut out_degree: Vec<usize> = vec![0; count];
+
+        for (from_idx, to_idx, weight, directed) in self.structure.get_all_edges() {
+            if weight == 0. {
+                continue;
+            }
+
+            out_degree[from_idx] += 1;
+
+            if !directed && from_idx != to_idx {
+                out_degree[to_idx] += 1;
+            }
+        }
+
+        return out_degree;
+    }
+
+    pub fn pagerank(&mut self, damping: f32, max_iter: usize, tolerance: f32) -> Vec<f32> {
+        let count = self.get_node_count();
+
+        if count == 0 {
+            return Vec::new();
+        }
+
+        let out_degree = self.compute_out_degree(count);
+        let has_zero_out_degree = out_degree.iter().any(|&d| d == 0);
+
+        if has_zero_out_degree {
+            return self.pagerank_gauss_seidel_impl(damping, max_iter, tolerance, &out_degree);
+        }
+
+        return self.pagerank_jacobi_impl(damping, max_iter, tolerance, &out_degree);
+    }
+
+    pub fn triangle_count_by_node(&mut self) -> Vec<usize> {
+        let count = self.get_node_count();
+        let mut per_node: Vec<usize> = vec![0; count];
+
+        if count == 0 {
+            return per_node;
+        }
+
+        let mut degree: Vec<usize> = vec![0; count];
+        for (from_idx, to_idx, weight, _directed) in self.structure.get_all_edges() {
+            if weight == 0. {
+                continue;
+            }
+
+            degree[from_idx] += 1;
+            if from_idx != to_idx {
+                degree[to_idx] += 1;
+            }
+        }
+
+        let mut offsets: Vec<usize> = vec![0; count + 1];
+        for i in 0..count {
+            offsets[i + 1] = offsets[i] + degree[i];
+        }
+
+        let total_edges = offsets[count];
+        let mut edges: Vec<usize> = vec![0; total_edges];
+        let mut cursor: Vec<usize> = offsets.clone();
+
+        for (from_idx, to_idx, weight, _directed) in self.structure.get_all_edges() {
+            if weight == 0. {
+                continue;
+            }
+
+            edges[cursor[from_idx]] = to_idx;
+            cursor[from_idx] += 1;
+            if from_idx != to_idx {
+                edges[cursor[to_idx]] = from_idx;
+                cursor[to_idx] += 1;
+            }
+        }
+
+        let max_degree = *degree.iter().max().unwrap_or(&0);
+        let mut bucket_head: Vec<usize> = vec![0; max_degree + 1];
+        let mut next_in_bucket: Vec<usize> = vec![0; count];
+
+        for i in 0..count {
+            let d = degree[i];
+            if bucket_head[d] != 0 {
+                next_in_bucket[i] = bucket_head[d];
+            }
+            bucket_head[d] = i + 1;
+        }
+
+        let mut rank: Vec<usize> = vec![0; count];
+        let mut placed = 0;
+        for d in 0..=max_degree {
+            if bucket_head[d] != 0 {
+                let mut next = bucket_head[d] - 1;
+                rank[next] = count - placed - 1;
+                placed += 1;
+                while next_in_bucket[next] != 0 {
+                    next = next_in_bucket[next] - 1;
+                    rank[next] = count - placed - 1;
+                    placed += 1;
+                }
+            }
+        }
+
+        let mut mark: Vec<usize> = vec![0; count];
+        let mut valid_degree: Vec<usize> = vec![0; count];
+        for i in 0..count {
+            let start = offsets[i];
+            let end = offsets[i + 1];
+            let irank = rank[i];
+            let mut write = start;
+
+            for read in start..end {
+                let e = edges[read];
+                if rank[e] > irank && mark[e] != i + 1 {
+                    mark[e] = i + 1;
+                    edges[write] = e;
+                    write += 1;
+                }
+            }
+
+            valid_degree[i] = write - start;
+        }
+
+        for node in 0..count {
+            let node_start = offsets[node];
+            let node_end = node_start + valid_degree[node];
+            let sentinel = count + node + 1;
+
+            for &nei in &edges[node_start..node_end] {
+                mark[nei] = sentinel;
+            }
+
+            for &nei in &edges[node_start..node_end] {
+                let nei_start = offsets[nei];
+                let nei_end = nei_start + valid_degree[nei];
+
+                for &nei2 in &edges[nei_start..nei_end] {
+                    if mark[nei2] == sentinel {
+                        per_node[node] += 1;
+                        per_node[nei] += 1;
+                        per_node[nei2] += 1;
+                    }
+                }
+            }
+        }
+
+        return per_node;
+    }
+
+    pub fn triangle_count(&mut self) -> usize {
+        let per_node = self.triangle_count_by_node();
+        let total: usize = per_node.iter().sum();
+
+        return total / 3;
+    }
+
+    pub fn clustering_coefficient_by_id(&mut self, target_idx: usize) -> f32 {
+        let triangles = self.triangle_count_by_node();
+        let degree = self.structure.get_neighbors_ids(target_idx).len();
+        let denominator = degree * degree.saturating_sub(1);
+
+        if denominator == 0 {
+            return 0.;
+        }
+
+        let result = (2 * triangles[target_idx]) as f32 / denominator as f32;
+
+        return result;
+    }
+
+    pub fn clustering_coefficient(&mut self, node_label: &str) -> f32 {
+        let target_idx = self.label_to_id(node_label).expect("Node not found");
+
+        return self.clustering_coefficient_by_id(target_idx);
+    }
+
+    pub fn transitivity(&mut self) -> f32 {
+        let count = self.get_node_count();
+
+        if count == 0 {
+            return 0.;
+        }
+
+        let triangles = self.triangle_count_by_node();
+        let closed_triplets: usize = triangles.iter().sum();
+
+        let mut total_triplets: usize = 0;
+        for node in 0..count {
+            let degree = self.structure.get_neighbors_ids(node).len();
+            total_triplets += degree * degree.saturating_sub(1);
+        }
+
+        if total_triplets == 0 {
+            return 0.;
+        }
+
+        let result = (2 * closed_triplets) as f32 / total_triplets as f32;
+
+        return result;
+    }
+
+
+    pub fn betweenness_centrality(&mut self) -> Vec<f32> {
+        let count = self.get_node_count();
+
+        if count == 0 {
+            return Vec::new();
+        }
+
+        let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); count];
+        for (from_idx, to_idx, weight, _directed) in self.structure.get_all_edges() {
+            if weight == 0. {
+                continue;
+            }
+
+            adjacency[from_idx].push(to_idx);
+            if from_idx != to_idx {
+                adjacency[to_idx].push(from_idx);
+            }
+        }
+
+        let mut betweenness: Vec<f64> = vec![0.; count];
+        let mut predecessors: Vec<Vec<usize>> = vec![Vec::new(); count];
+        let mut sigma: Vec<f64> = vec![0.; count];
+        let mut dist: Vec<i64> = vec![-1; count];
+        let mut delta: Vec<f64> = vec![0.; count];
+        let mut stack: Vec<usize> = Vec::new();
+        let mut queue: VecDeque<usize> = VecDeque::new();
+
+        for s in 0..count {
+            sigma[s] = 1.;
+            dist[s] = 0;
+            queue.push_back(s);
+
+            while let Some(v) = queue.pop_front() {
+                stack.push(v);
+
+                for &w in &adjacency[v] {
+                    if dist[w] < 0 {
+                        dist[w] = dist[v] + 1;
+                        queue.push_back(w);
+                    }
+
+                    if dist[w] == dist[v] + 1 {
+                        sigma[w] += sigma[v];
+                        predecessors[w].push(v);
+                    }
+                }
+            }
+
+            for &w in stack.iter().rev() {
+                for &v in &predecessors[w] {
+                    delta[v] += (sigma[v] / sigma[w]) * (1. + delta[w]);
+                }
+
+                if w != s {
+                    betweenness[w] += delta[w];
+                }
+            }
+
+            for &v in &stack {
+                dist[v] = -1;
+                sigma[v] = 0.;
+                delta[v] = 0.;
+                predecessors[v].clear();
+            }
+            stack.clear();
+        }
+
+        let node_count_f = count as f64;
+        let scale = if count > 2 {
+            1. / ((node_count_f - 1.) * (node_count_f - 2.))
+        } else {
+            1.
+        };
+
+        let result: Vec<f32> = betweenness.iter().map(|&b| (b * scale) as f32).collect();
+
+        return result;
+    }
+
+    pub fn k_core_decomposition(&mut self) -> HashMap<usize, usize> {
+        let count = self.get_node_count();
+        let mut result: HashMap<usize, usize> = HashMap::new();
+
+        if count == 0 {
+            return result;
+        }
+
+        let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); count];
+        for (from_idx, to_idx, weight, _directed) in self.structure.get_all_edges() {
+            if weight == 0. {
+                continue;
+            }
+
+            adjacency[from_idx].push(to_idx);
+            if from_idx != to_idx {
+                adjacency[to_idx].push(from_idx);
+            }
+        }
+
+        let mut core: Vec<usize> = adjacency.iter().map(|neighbors| neighbors.len()).collect();
+        let max_degree = *core.iter().max().unwrap_or(&0);
+
+        let mut nodes: Vec<usize> = (0..count).collect();
+        nodes.sort_by_key(|&v| core[v]);
+
+        let mut node_pos: Vec<usize> = vec![0; count];
+        for (pos, &v) in nodes.iter().enumerate() {
+            node_pos[v] = pos;
+        }
+
+        let mut bin_boundaries: Vec<usize> = vec![0; max_degree + 2];
+        let mut current_degree = 0;
+        for (i, &v) in nodes.iter().enumerate() {
+            if core[v] > current_degree {
+                for d in (current_degree + 1)..=core[v] {
+                    bin_boundaries[d] = i;
+                }
+                current_degree = core[v];
+            }
+        }
+
+        for i in 0..count {
+            let v = nodes[i];
+            let neighbors: Vec<usize> = adjacency[v].clone();
+
+            for u in neighbors {
+                if core[u] > core[v] {
+                    if let Some(pos) = adjacency[u].iter().position(|&x| x == v) {
+                        adjacency[u].swap_remove(pos);
+                    }
+
+                    let pos_u = node_pos[u];
+                    let bin_start = bin_boundaries[core[u]];
+                    let w = nodes[bin_start];
+
+                    if pos_u != bin_start {
+                        nodes[pos_u] = w;
+                        nodes[bin_start] = u;
+                        node_pos[u] = bin_start;
+                        node_pos[w] = pos_u;
+                    }
+
+                    bin_boundaries[core[u]] += 1;
+                    core[u] -= 1;
+                }
+            }
+        }
+
+        for i in 0..count {
+            result.insert(i, core[i]);
+        }
+
+        return result;
+    }
+
     pub fn get_nodes_for_render(&self) -> Vec<_Node> {
         let count = self.structure.node_count();
         if !self.structure.manages_labels() && self.metadata.node_info.len() == count {
-            return self.metadata.node_info.clone();
+            let mut nodes = self.metadata.node_info.clone();
+            for node in &mut nodes {
+                if node.label.is_empty() {
+                    if let Some(idx) = node.index {
+                        node.label = idx.to_string().into();
+                    }
+                }
+            }
+            return nodes;
         }
 
         return (0..count).map(|i| {
@@ -665,7 +1432,7 @@ impl<S: IGraphStructure> _Graph<S> {
                 (None, None)
             };
             _Node {
-                label: self.resolve_label(i),
+                label: self.resolve_label(i).into(),
                 index: Some(i),
                 x,
                 y,

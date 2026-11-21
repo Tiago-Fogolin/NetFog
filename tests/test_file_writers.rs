@@ -89,3 +89,54 @@ fn test_output_edge_list_file() {
 
     std::fs::remove_file("mock_output_edges.txt").ok();
 }
+
+fn create_id_pure_graph() -> _Graph {
+    let mut graph = _Graph::default();
+    graph.batch_add_anonymous_nodes(4);
+    graph.batch_create_connections_from_ids(&[
+        (0, 1, 2., false),
+        (1, 2, 1.6, false),
+        (2, 3, 4., true),
+        (3, 0, 5.5, false),
+    ]);
+
+    return graph;
+}
+
+#[test]
+fn test_output_svg_id_pure_does_not_panic() {
+    let mut graph = create_id_pure_graph();
+    let style = GraphStyle::default();
+    let svg_content = graph.output_svg(Layout::Random, true, style);
+
+    assert!(!svg_content.is_empty());
+}
+
+#[test]
+fn test_output_json_file_id_pure_preserves_edge_endpoints() {
+    let mut graph = create_id_pure_graph();
+    graph.output_json_file("mock_output_id_pure.json");
+    let content = std::fs::read_to_string("mock_output_id_pure.json").expect("Erro ao ler o arquivo");
+    std::fs::remove_file("mock_output_id_pure.json").ok();
+
+    assert!(!content.contains("\"source\": \"\""));
+    assert!(!content.contains("\"target\": \"\""));
+    assert!(content.contains("\"source\": \"0\""));
+    assert!(content.contains("\"target\": \"1\""));
+}
+
+#[test]
+fn test_output_edge_list_file_id_pure_preserves_edge_endpoints() {
+    let mut graph = create_id_pure_graph();
+    graph.output_edge_list_file("mock_output_edges_id_pure.txt");
+    let content = std::fs::read_to_string("mock_output_edges_id_pure.txt").expect("Erro ao ler o arquivo");
+    std::fs::remove_file("mock_output_edges_id_pure.txt").ok();
+
+    for line in content.lines() {
+        let mut columns = line.split('\t');
+        let from = columns.next().expect("linha sem coluna 'from'");
+        let to = columns.next().expect("linha sem coluna 'to'");
+        assert!(!from.is_empty());
+        assert!(!to.is_empty());
+    }
+}

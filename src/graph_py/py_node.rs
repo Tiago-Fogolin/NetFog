@@ -15,7 +15,7 @@ impl Node {
     fn new(label: String) -> Self {
         Node {
             inner: _Node {
-                label,
+                label: label.into(),
                 x: None,
                 y: None,
                 index: None
@@ -29,7 +29,7 @@ impl Node {
 
     #[getter]
     fn label(&self) -> String {
-        self.inner.label.clone()
+        self.inner.label.to_string()
     }
 
     #[getter]

@@ -11,7 +11,7 @@ pub fn generate_visualization(nodes: &[_Node], all_edges: impl Iterator<Item = (
         json.push_str(&format!(
             "{{\"id\":{},\"label\":{},\"x\":{},\"y\":{}}}",
             i,
-            serde_json::to_string(&node.label).unwrap(),
+            serde_json::to_string(node.label.as_ref()).unwrap(),
             node.x.unwrap_or(0.0),
             node.y.unwrap_or(0.0)
         ));
