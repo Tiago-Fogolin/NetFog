@@ -7,7 +7,6 @@ use netfog::graph_core::adjacency_list::AdjacencyList;
 use netfog::graph_core::adjacency_matrix::AdjacencyMatrix;
 use netfog::graph_core::compressed_sparse_row::CompressedSparseRow;
 use netfog::graph_core::packed_compressed_sparse_row::PackedCompressedSparseRow;
-use netfog::graph_core::bfs_csr::BfsCsr;
 use netfog::layout::layout::Layout;
 use netfog::layout::style::GraphStyle;
 
@@ -16,7 +15,6 @@ enum RGraphInner {
     List(Rc<RefCell<_Graph<AdjacencyList>>>),
     CompressedSparseRow(Rc<RefCell<_Graph<CompressedSparseRow>>>),
     PackedCompressedSparseRow(Rc<RefCell<_Graph<PackedCompressedSparseRow>>>),
-    BfsCsr(Rc<RefCell<_Graph<BfsCsr>>>),
 }
 
 macro_rules! with_graph_mut {
@@ -35,10 +33,6 @@ macro_rules! with_graph_mut {
                 $body
             },
             RGraphInner::PackedCompressedSparseRow(inner) => {
-                let mut $g = (*inner).borrow_mut();
-                $body
-            },
-            RGraphInner::BfsCsr(inner) => {
                 let mut $g = (*inner).borrow_mut();
                 $body
             },
@@ -65,10 +59,6 @@ macro_rules! with_graph {
                 let $g = (*inner).borrow();
                 $body
             },
-            RGraphInner::BfsCsr(inner) => {
-                let $g = (*inner).borrow();
-                $body
-            },
         }
     }
 }
@@ -78,7 +68,6 @@ fn make_inner(structure: &str) -> RGraphInner {
         "adjacency_matrix" => return RGraphInner::Matrix(Rc::new(RefCell::new(_Graph::<AdjacencyMatrix>::default()))),
         "compressed_sparse_row" => return RGraphInner::CompressedSparseRow(Rc::new(RefCell::new(_Graph::<CompressedSparseRow>::default()))),
         "packed_compressed_sparse_row" => return RGraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(_Graph::<PackedCompressedSparseRow>::default()))),
-        "bfs_csr" => return RGraphInner::BfsCsr(Rc::new(RefCell::new(_Graph::<BfsCsr>::default()))),
         "adjacency_list" => return RGraphInner::List(Rc::new(RefCell::new(_Graph::<AdjacencyList>::default()))),
         _ => return RGraphInner::List(Rc::new(RefCell::new(_Graph::<AdjacencyList>::default()))),
     }
@@ -183,6 +172,39 @@ impl RGraph {
             let to_idx = resolve_node_idx(&g, &to_ref);
 
             g.create_connection_by_id(from_idx, to_idx, weight as f32, Some(directed));
+        });
+
+        return;
+    }
+
+    fn add_nodes_from(&self, labels: Vec<String>) {
+        let borrowed: Vec<&str> = labels.iter().map(String::as_str).collect();
+        with_graph_mut!(self, |g| {
+            g.batch_add_nodes(borrowed);
+        });
+
+        return;
+    }
+
+    fn add_edges_from_ids(&self, from: Vec<f64>, to: Vec<f64>, weight: Vec<f64>, directed: Vec<Rbool>) {
+        let mapped_edges: Vec<(usize, usize, f32, bool)> = (0..from.len())
+            .map(|i| (from[i] as usize, to[i] as usize, weight[i] as f32, directed[i].is_true()))
+            .collect();
+
+        with_graph_mut!(self, |g| {
+            g.batch_create_connections_from_ids(&mapped_edges);
+        });
+
+        return;
+    }
+
+    fn add_edges_from(&self, from: Vec<String>, to: Vec<String>, weight: Vec<f64>, directed: Vec<Rbool>) {
+        let borrowed: Vec<(&str, &str, f32, Option<bool>)> = (0..from.len())
+            .map(|i| (from[i].as_str(), to[i].as_str(), weight[i] as f32, Some(directed[i].is_true())))
+            .collect();
+
+        with_graph_mut!(self, |g| {
+            g.batch_create_connections(borrowed);
         });
 
         return;
@@ -371,6 +393,12 @@ impl RGraph {
         });
 
         return result as f64;
+    }
+
+    fn closeness_centrality_all(&self) -> Vec<f64> {
+        let scores = with_graph_mut!(self, |g| g.closeness_centrality_all());
+
+        return scores.into_iter().map(|v| v as f64).collect();
     }
 
     fn clustering_coefficient(&self, node: Robj) -> f64 {

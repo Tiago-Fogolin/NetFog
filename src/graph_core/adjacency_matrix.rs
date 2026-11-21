@@ -118,6 +118,43 @@ impl IGraphStructure for AdjacencyMatrix {
         return ids;
     }
 
+    fn incident_neighbors(&self, node_index: usize) -> impl Iterator<Item = usize> + '_ {
+        let cap = self.capacity;
+        let row_start = node_index * cap;
+
+        return (0..self.node_count)
+            .filter(move |&i| self.mtz[row_start + i].0 > 0.)
+            .chain(self.incoming_directed[node_index].iter().copied());
+    }
+
+    fn neighbors_with_weights(&self, node_index: usize) -> impl Iterator<Item = (usize, f32)> + '_ {
+        let cap = self.capacity;
+        let row_start = node_index * cap;
+
+        return (0..self.node_count).filter_map(move |j| {
+            let (weight, _directed) = self.mtz[row_start + j];
+            if weight == 0. {
+                return None;
+            }
+            return Some((j, weight));
+        });
+    }
+
+    fn predecessors(&self, node_index: usize) -> impl Iterator<Item = usize> + '_ {
+        let cap = self.capacity;
+        let row_start = node_index * cap;
+
+        return (0..self.node_count)
+            .filter_map(move |j| {
+                let (weight, directed) = self.mtz[row_start + j];
+                if directed || weight == 0. {
+                    return None;
+                }
+                return Some(j);
+            })
+            .chain(self.incoming_directed[node_index].iter().copied());
+    }
+
     fn batch_add_nodes(&mut self, additional_count: usize) {
         let new_total_size = self.node_count + additional_count;
         self.grow_capacity(new_total_size);

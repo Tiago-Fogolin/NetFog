@@ -16,9 +16,8 @@ create_connection(graph, from, to, weight = 1, directed = FALSE)
 \arguments{
   \item{structure}{character scalar. Internal storage structure to use:
     one of \code{"adjacency_list"} (default), \code{"adjacency_matrix"},
-    \code{"compressed_sparse_row"}, \code{"packed_compressed_sparse_row"}
-    or \code{"bfs_csr"}. Any other value falls back to
-    \code{"adjacency_list"}.}
+    \code{"compressed_sparse_row"} or \code{"packed_compressed_sparse_row"}.
+    Any other value falls back to \code{"adjacency_list"}.}
   \item{graph}{a \code{netfog_graph}, as returned by \code{new_graph}.}
   \item{label}{character scalar. The node's label.}
   \item{count}{integer scalar. Number of anonymous (id-only) nodes to

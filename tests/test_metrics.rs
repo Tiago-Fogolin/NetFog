@@ -409,6 +409,51 @@ fn test_closeness_centrality_unreachable_node_is_zero() {
 }
 
 #[test]
+fn test_closeness_centrality_all_matches_per_node_path_of_three() {
+    let mut graph = create_path_of_three();
+
+    let scores = graph.closeness_centrality_all();
+
+    assert_abs_diff_eq!(scores[0], 1. / 3., epsilon = 1e-5);
+    assert_abs_diff_eq!(scores[1], 0.5, epsilon = 1e-5);
+    assert_abs_diff_eq!(scores[2], 1. / 3., epsilon = 1e-5);
+}
+
+#[test]
+fn test_closeness_centrality_all_matches_per_node_triangle() {
+    let mut graph = create_triangle();
+
+    let scores = graph.closeness_centrality_all();
+
+    assert_abs_diff_eq!(scores[0], 0.5, epsilon = 1e-5);
+    assert_abs_diff_eq!(scores[1], 0.5, epsilon = 1e-5);
+    assert_abs_diff_eq!(scores[2], 0.5, epsilon = 1e-5);
+}
+
+#[test]
+fn test_closeness_centrality_all_unreachable_node_is_zero() {
+    let mut graph = _Graph::default();
+    graph.add_node("A".to_string());
+    graph.add_node("B".to_string());
+    graph.add_node("C".to_string());
+
+    graph.create_connection("A".to_string(), "B".to_string(), 1., Some(false));
+
+    let scores = graph.closeness_centrality_all();
+
+    assert_eq!(scores[0], 0.);
+    assert_eq!(scores[1], 0.);
+    assert_eq!(scores[2], 0.);
+}
+
+#[test]
+fn test_closeness_centrality_all_empty_graph() {
+    let mut graph = _Graph::default();
+
+    assert_eq!(graph.closeness_centrality_all().len(), 0);
+}
+
+#[test]
 fn test_clustering_coefficient_triangle_is_one() {
     let mut graph = create_triangle();
 

@@ -8,6 +8,12 @@ pub trait IGraphStructure {
     fn node_count(&self) -> usize;
     fn get_neighbors_ids(&self, node_index: usize) -> Vec<usize>;
 
+    fn neighbors_with_weights(&self, node_index: usize) -> impl Iterator<Item = (usize, f32)> + '_;
+
+    fn incident_neighbors(&self, node_index: usize) -> impl Iterator<Item = usize> + '_;
+
+    fn predecessors(&self, node_index: usize) -> impl Iterator<Item = usize> + '_;
+
     fn batch_add_nodes(&mut self, count: usize);
     fn batch_create_connections(&mut self, connections: &[(usize, usize, f32, bool)]);
     
@@ -17,23 +23,17 @@ pub trait IGraphStructure {
         return None;
     }
 
-    /// Returns true if this structure manages label↔id mappings internally (e.g. on disk).
-    /// When true, _Graph will NOT write to GraphMetadata for labels.
     fn manages_labels(&self) -> bool { false }
 
     fn set_node_label(&mut self, _id: usize, _label: &str) {}
 
     fn get_id_by_label(&self, _label: &str) -> Option<usize> { None }
 
-    /// Returns true if this structure manages node positions internally (e.g. on disk).
-    /// When true, _Graph will NOT write positions to GraphMetadata.
     fn manages_positions(&self) -> bool { false }
 
     fn set_node_position(&mut self, _id: usize, _x: f64, _y: f64) {}
 
     fn get_node_position(&self, _id: usize) -> Option<(f64, f64)> { None }
 
-    /// Returns true if this structure is backed by disk (e.g. DiskGraph).
-    /// When true, the dispatcher routes to disk-based ETL pipelines.
     fn is_disk_based(&self) -> bool { return false; }
 }

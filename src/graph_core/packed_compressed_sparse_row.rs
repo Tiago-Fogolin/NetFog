@@ -392,6 +392,61 @@ impl IGraphStructure for PackedCompressedSparseRow {
         return ids;
     }
 
+    fn incident_neighbors(&self, node_index: usize) -> impl Iterator<Item = usize> + '_ {
+        let (start, end) = if node_index >= self.nodes.len() {
+            (0, 0)
+        } else {
+            let node = self.nodes[node_index];
+            (node.beginning + 1, node.end.min(self.n))
+        };
+
+        let native = (start..end).filter_map(move |i| {
+            let e = self.edges[i as usize];
+            if e.is_null() || e.is_sentinel() {
+                return None;
+            }
+            return Some(e.dest as usize);
+        });
+
+        return native.chain(self.incoming_directed[node_index].iter().copied());
+    }
+
+    fn predecessors(&self, node_index: usize) -> impl Iterator<Item = usize> + '_ {
+        let (start, end) = if node_index >= self.nodes.len() {
+            (0, 0)
+        } else {
+            let node = self.nodes[node_index];
+            (node.beginning + 1, node.end.min(self.n))
+        };
+
+        let native = (start..end).filter_map(move |i| {
+            let e = self.edges[i as usize];
+            if e.is_null() || e.is_sentinel() || e.directed {
+                return None;
+            }
+            return Some(e.dest as usize);
+        });
+
+        return native.chain(self.incoming_directed[node_index].iter().copied());
+    }
+
+    fn neighbors_with_weights(&self, node_index: usize) -> impl Iterator<Item = (usize, f32)> + '_ {
+        let (start, end) = if node_index >= self.nodes.len() {
+            (0, 0)
+        } else {
+            let node = self.nodes[node_index];
+            (node.beginning + 1, node.end.min(self.n))
+        };
+
+        return (start..end).filter_map(move |i| {
+            let e = self.edges[i as usize];
+            if e.is_null() || e.is_sentinel() {
+                return None;
+            }
+            return Some((e.dest as usize, e.weight));
+        });
+    }
+
     fn batch_add_nodes(&mut self, count: usize) { for _ in 0..count { self.add_node(); } }
 
     fn batch_create_connections(&mut self, connections: &[(usize, usize, f32, bool)]) {

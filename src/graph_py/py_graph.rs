@@ -7,7 +7,6 @@ use crate::graph_core::adjacency_matrix::AdjacencyMatrix;
 use crate::graph_core::adjacency_list::AdjacencyList;
 use crate::graph_core::compressed_sparse_row::CompressedSparseRow;
 use crate::graph_core::packed_compressed_sparse_row::PackedCompressedSparseRow;
-use crate::graph_core::bfs_csr::BfsCsr;
 use crate::graph_py::py_node::Node;
 use crate::layout::layout::Layout;
 use crate::layout::style::GraphStyle;
@@ -30,7 +29,6 @@ pub enum GraphStructureType {
     AdjacencyList,
     CompressedSparseRow,
     PackedCompressedSparseRow,
-    BfsCsr,
 }
 
 enum GraphInner {
@@ -38,7 +36,6 @@ enum GraphInner {
     List(Rc<RefCell<_Graph<AdjacencyList>>>),
     CompressedSparseRow(Rc<RefCell<_Graph<CompressedSparseRow>>>),
     PackedCompressedSparseRow(Rc<RefCell<_Graph<PackedCompressedSparseRow>>>),
-    BfsCsr(Rc<RefCell<_Graph<BfsCsr>>>),
 }
 
 macro_rules! with_graph_mut {
@@ -57,10 +54,6 @@ macro_rules! with_graph_mut {
                 $body
             },
             GraphInner::PackedCompressedSparseRow(inner) => {
-                let mut $g = (*inner).borrow_mut();
-                $body
-            },
-            GraphInner::BfsCsr(inner) => {
                 let mut $g = (*inner).borrow_mut();
                 $body
             },
@@ -87,11 +80,6 @@ macro_rules! with_graph {
                 let $g = (*inner).borrow();
                 $body
             },
-            GraphInner::BfsCsr(inner) => {
-                let $g = (*inner).borrow();
-                $body
-            },
-
         }
     }
 }
@@ -119,11 +107,6 @@ macro_rules! make_graph {
                 type $T = PackedCompressedSparseRow;
                 let graph = $build;
                 Graph { inner: GraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(graph))) }
-            },
-            GraphStructureType::BfsCsr => {
-                type $T = BfsCsr;
-                let graph = $build;
-                Graph { inner: GraphInner::BfsCsr(Rc::new(RefCell::new(graph))) }
             },
         }
     }}
@@ -162,7 +145,6 @@ impl Graph {
             crate::graph_py::py_graph::GraphStructureType::AdjacencyList => GraphInner::List(Rc::new(RefCell::new(_Graph::<AdjacencyList>::default()))),
             crate::graph_py::py_graph::GraphStructureType::CompressedSparseRow => GraphInner::CompressedSparseRow(Rc::new(RefCell::new(_Graph::<CompressedSparseRow>::default()))),
             crate::graph_py::py_graph::GraphStructureType::PackedCompressedSparseRow => GraphInner::PackedCompressedSparseRow(Rc::new(RefCell::new(_Graph::<PackedCompressedSparseRow>::default()))),
-            crate::graph_py::py_graph::GraphStructureType::BfsCsr => GraphInner::BfsCsr(Rc::new(RefCell::new(_Graph::<BfsCsr>::default()))),
         };
         return Graph { inner };
     }
@@ -478,9 +460,19 @@ impl Graph {
         return Ok(result);
     }
 
+    pub fn closeness_centrality_all(&self) -> PyResult<Vec<f32>> {
+        let scores = with_graph_mut!(self, |g| g.closeness_centrality_all());
+        return Ok(scores);
+    }
+
     pub fn connected_components(&self) -> PyResult<Vec<usize>> {
         let component_ids = with_graph_mut!(self, |g| g.connected_components());
         return Ok(component_ids);
+    }
+
+    pub fn connected_components_count(&self) -> PyResult<usize> {
+        let count = with_graph_mut!(self, |g| g.connected_components_count());
+        return Ok(count);
     }
 
     pub fn connected_components_grouped(&self, py: Python<'_>) -> PyResult<Py<PyDict>> {

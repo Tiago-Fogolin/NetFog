@@ -34,7 +34,6 @@ class GraphStructureType(IntEnum):
     AdjacencyList = 1
     CompressedSparseRow = 2
     PackedCompressedSparseRow = 3
-    BfsCsr = 4
 
 class GraphStyle:
     node_color: str

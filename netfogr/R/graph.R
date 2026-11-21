@@ -23,6 +23,40 @@ create_connection <- function(graph, from, to, weight = 1, directed = FALSE) {
     ))
 }
 
+add_nodes_from <- function(graph, labels) {
+    invisible(.Call("wrap__RGraph__add_nodes_from", graph$ptr, as.character(labels), PACKAGE = "netfogr"))
+}
+
+add_edges_from_ids <- function(graph, from, to, weight = 1, directed = FALSE) {
+    n <- length(from)
+    if (length(weight) == 1) weight <- rep(weight, n)
+    if (length(directed) == 1) directed <- rep(directed, n)
+    invisible(.Call(
+        "wrap__RGraph__add_edges_from_ids",
+        graph$ptr,
+        as.double(from),
+        as.double(to),
+        as.double(weight),
+        as.logical(directed),
+        PACKAGE = "netfogr"
+    ))
+}
+
+add_edges_from <- function(graph, from, to, weight = 1, directed = FALSE) {
+    n <- length(from)
+    if (length(weight) == 1) weight <- rep(weight, n)
+    if (length(directed) == 1) directed <- rep(directed, n)
+    invisible(.Call(
+        "wrap__RGraph__add_edges_from",
+        graph$ptr,
+        as.character(from),
+        as.character(to),
+        as.double(weight),
+        as.logical(directed),
+        PACKAGE = "netfogr"
+    ))
+}
+
 node_by_label <- function(graph, node) {
     return(.Call("wrap__RGraph__node_by_label", graph$ptr, node, PACKAGE = "netfogr"))
 }
@@ -124,6 +158,10 @@ betweenness_centrality <- function(graph) {
 
 closeness_centrality <- function(graph, node) {
     return(.Call("wrap__RGraph__closeness_centrality", graph$ptr, node, PACKAGE = "netfogr"))
+}
+
+closeness_centrality_all <- function(graph) {
+    return(.Call("wrap__RGraph__closeness_centrality_all", graph$ptr, PACKAGE = "netfogr"))
 }
 
 clustering_coefficient <- function(graph, node) {

@@ -133,6 +133,37 @@ impl IGraphStructure for CompressedSparseRow {
         return ids;
     }
 
+    fn incident_neighbors(&self, node_index: usize) -> impl Iterator<Item = usize> + '_ {
+        let start = self.offsets[node_index];
+        let end = self.offsets[node_index + 1];
+
+        return self.edges[start..end].iter().copied()
+            .chain(self.incoming_directed[node_index].iter().copied());
+    }
+
+    fn neighbors_with_weights(&self, node_index: usize) -> impl Iterator<Item = (usize, f32)> + '_ {
+        let start = self.offsets[node_index];
+        let end = self.offsets[node_index + 1];
+
+        return (start..end).filter_map(move |j| {
+            let weight = self.weights[j];
+            if weight == 0. {
+                return None;
+            }
+            return Some((self.edges[j], weight));
+        });
+    }
+
+    fn predecessors(&self, node_index: usize) -> impl Iterator<Item = usize> + '_ {
+        let start = self.offsets[node_index];
+        let end = self.offsets[node_index + 1];
+
+        return (start..end)
+            .filter(move |&j| !self.directed_flags[j] && self.weights[j] != 0.)
+            .map(move |j| self.edges[j])
+            .chain(self.incoming_directed[node_index].iter().copied());
+    }
+
     fn batch_add_nodes(&mut self, additional_count: usize) {
         self.offsets.reserve(additional_count);
         let last = *self.offsets.last().unwrap();

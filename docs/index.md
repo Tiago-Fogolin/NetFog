@@ -14,7 +14,7 @@ Currently supports / planned features:
 - Directed and undirected graphs
 - Weighted edges
 - Metrics
-- Algorithms like BFS, DFS, Dijkstra
+- Algorithms like BFS, DFS, Dijkstra, PageRank, Connected Components, Triangle Counting, and Betweenness Centrality
 - Graph visualization
 - Simulations
 

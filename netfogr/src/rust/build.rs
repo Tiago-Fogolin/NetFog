@@ -60,7 +60,7 @@ fn main() {
         .include(include_dir)
         .compile("netfogr_entrypoint");
 
-    if target.contains("gnu") {
+    if target.contains("windows-gnu") {
         let import_lib_dir = format!("{}/r_import_lib_gnu", manifest_dir);
         generate_r_import_lib(&r_home, &import_lib_dir);
         println!("cargo:rustc-link-search=native={}", import_lib_dir);

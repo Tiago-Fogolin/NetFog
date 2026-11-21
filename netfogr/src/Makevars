@@ -1,0 +1,16 @@
+LIBDIR = rust/target/release
+STATLIB = $(LIBDIR)/libnetfogr.a
+
+PKG_LIBS = $(STATLIB) -ldl -lpthread -lgcc_s -lc -lm
+
+OBJECTS = rust/entrypoint.o
+
+all: $(SHLIB)
+
+$(SHLIB): $(STATLIB)
+
+$(STATLIB):
+	cd rust && cargo build --release
+
+clean:
+	rm -Rf rust/target rust/entrypoint.o

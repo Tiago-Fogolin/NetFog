@@ -97,6 +97,30 @@ impl IGraphStructure for AdjacencyList {
         return ids;
     }
 
+    fn incident_neighbors(&self, node_index: usize) -> impl Iterator<Item = usize> + '_ {
+        return self.targets[node_index].iter().zip(self.weights[node_index].iter())
+            .filter_map(|(&tgt, &w)| if w > 0. { Some(tgt) } else { None })
+            .chain(self.incoming_directed[node_index].iter().filter_map(|&(src, w)| if w > 0. { Some(src) } else { None }));
+    }
+
+    fn neighbors_with_weights(&self, node_index: usize) -> impl Iterator<Item = (usize, f32)> + '_ {
+        return self.targets[node_index].iter().zip(self.weights[node_index].iter())
+            .filter_map(|(&tgt, &weight)| {
+                if weight == 0. {
+                    return None;
+                }
+                return Some((tgt, weight));
+            });
+    }
+
+    fn predecessors(&self, node_index: usize) -> impl Iterator<Item = usize> + '_ {
+        let n = self.targets[node_index].len();
+        return (0..n)
+            .filter(move |&idx| !self.directed_flags[node_index][idx] && self.weights[node_index][idx] != 0.)
+            .map(move |idx| self.targets[node_index][idx])
+            .chain(self.incoming_directed[node_index].iter().filter_map(|&(src, w)| if w != 0. { Some(src) } else { None }));
+    }
+
     fn batch_add_nodes(&mut self, additional_count: usize) {
         self.node_count += additional_count;
         for _ in 0..additional_count {
